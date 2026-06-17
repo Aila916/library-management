@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: library-management
+    runtime: python
+    repo: https://github.com/Aila916/library_management
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: RENDER
+        value: true

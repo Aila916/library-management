@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block page_title %}Members{% endblock %}
+
+{% block content %}
+<div class="table-container">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5><i class="bi bi-people"></i> Library Members</h5>
+        <a href="{{ url_for('add_member') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-person-plus"></i> Add Member
+        </a>
+    </div>
+    
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Join Date</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for member in members %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td><strong>{{ member.name }}</strong></td>
+                    <td>{{ member.email }}</td>
+                    <td>{{ member.phone or '-' }}</td>
+                    <td>{{ member.join_date }}</td>
+                    <td>
+                        {% if member.status == 'active' %}
+                            <span class="badge bg-success">Active</span>
+                        {% else %}
+                            <span class="badge bg-danger">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('edit_member', id=member.id) }}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteMember({{ member.id }})">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function deleteMember(id) {
+    if(confirm('Delete this member?')) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/delete_member/' + id;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

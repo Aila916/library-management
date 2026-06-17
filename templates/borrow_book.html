@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block page_title %}Borrow Book{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6">
+        <div class="form-container">
+            <h5><i class="bi bi-arrow-right-circle"></i> New Borrow</h5>
+            <hr>
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Select Book</label>
+                    <select name="book_id" class="form-select" required>
+                        <option value="">Choose a book...</option>
+                        {% for book in books %}
+                            <option value="{{ book.id }}">
+                                {{ book.title }} by {{ book.author }} ({{ book.quantity }} available)
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Select Member</label>
+                    <select name="member_id" class="form-select" required>
+                        <option value="">Choose a member...</option>
+                        {% for member in members %}
+                            <option value="{{ member.id }}">
+                                {{ member.name }} - {{ member.email }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Due Date</label>
+                    <input type="date" name="due_date" class="form-control" 
+                           value="{{ default_due }}" min="{{ today }}">
+                    <small class="text-muted">Default: 14 days</small>
+                </div>
+                
+                <button type="submit" class="btn btn-primary w-100" 
+                        {% if not books or not members %}disabled{% endif %}>
+                    <i class="bi bi-check-circle"></i> Borrow Book
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="form-container">
+            <h5><i class="bi bi-clock"></i> Currently Borrowed</h5>
+            <hr>
+            {% if current_borrows %}
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Book</th>
+                                <th>Member</th>
+                                <th>Due</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for borrow in current_borrows %}
+                                <tr>
+                                    <td>{{ borrow.book_title }}</td>
+                                    <td>{{ borrow.member_name }}</td>
+                                    <td>
+                                        <span class="badge {% if borrow.status == 'overdue' %}bg-danger{% else %}bg-warning{% endif %}">
+                                            {{ borrow.due_date }}
+                                        </span>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-muted">No books currently borrowed</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
