@@ -9,30 +9,19 @@ app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this-in-production'
 
 # ---------------------------
-# DATABASE CONNECTION - FIXED
+# DATABASE CONNECTION - FORCE POSTGRESQL ON RENDER
 # ---------------------------
 def get_db_connection():
-    # Check if we're on Render by looking for RENDER environment variable
-    # OR by checking if DATABASE_URL exists
-    is_render = os.environ.get('RENDER') or os.environ.get('DATABASE_URL')
-    
-    if is_render:
-        print("📊 Connecting to PostgreSQL on Render...")
-        conn = psycopg2.connect(
-            host='dpg-d8p62cj6sc1c73cdt590-a.virginia-postgres.render.com',
-            user='libraryuser',
-            password='AaCrgEda9PjShZEWZq6dAJl6Un0m28ZB',
-            database='library_yiqs',
-            port=5432
-        )
-        return conn
-    else:
-        # Local development - use SQLite
-        print("💻 Connecting to SQLite locally...")
-        import sqlite3
-        conn = sqlite3.connect('library.db')
-        conn.row_factory = sqlite3.Row
-        return conn
+    # ALWAYS use PostgreSQL on Render
+    print("📊 Connecting to PostgreSQL...")
+    conn = psycopg2.connect(
+        host='dpg-d8p62cj6sc1c73cdt590-a.virginia-postgres.render.com',
+        user='libraryuser',
+        password='AaCrgEda9PjShZEWZq6dAJl6Un0m28ZB',
+        database='library_yiqs',
+        port=5432
+    )
+    return conn
 
 # ---------------------------
 # LOGIN DECORATOR
@@ -151,6 +140,10 @@ def init_database():
         cursor.close()
         conn.close()
 
+# Initialize database when app starts
+print("🚀 Initializing database...")
+init_database()
+
 # ---------------------------
 # ROUTES
 # ---------------------------
@@ -166,17 +159,28 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, password))
-        user = cursor.fetchone()
-        conn.close()
-        if user:
-            session['user_id'] = user['id']
-            session['username'] = user['username']
-            flash(f'Welcome back, {username}!', 'success')
-            return redirect(url_for('dashboard'))
-        flash('Invalid credentials!', 'error')
+        print(f"🔐 Login attempt: {username}")
+        
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, password))
+            user = cursor.fetchone()
+            conn.close()
+            
+            if user:
+                session['user_id'] = user['id']
+                session['username'] = user['username']
+                flash(f'Welcome back, {username}!', 'success')
+                print(f"✅ Login successful: {username}")
+                return redirect(url_for('dashboard'))
+            else:
+                flash('Invalid credentials!', 'error')
+                print(f"❌ Login failed: {username}")
+        except Exception as e:
+            print(f"❌ Login error: {e}")
+            flash('An error occurred. Please try again.', 'error')
+    
     return render_template('login.html')
 
 @app.route('/logout')
@@ -442,22 +446,5 @@ def delete_member(id):
 # RUN APP
 # ---------------------------
 if __name__ == '__main__':
-    # Check if we're on Render
-    is_render = os.environ.get('RENDER') or os.environ.get('DATABASE_URL')
-    
-    if is_render:
-        print("🚀 Starting on Render...")
-        try:
-            init_database()
-        except Exception as e:
-            print(f"❌ Database init error: {e}")
-    else:
-        print("💻 Starting locally...")
-        # Initialize SQLite locally
-        try:
-            init_database()
-        except Exception as e:
-            print(f"❌ Local database init error: {e}")
-    
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
