@@ -4,6 +4,7 @@ from functools import wraps
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this-in-production'
@@ -13,23 +14,48 @@ app.secret_key = 'your-secret-key-change-this-in-production'
 # ---------------------------
 def get_db_connection():
     if os.environ.get('RENDER'):
-        # Use PostgreSQL on Render
-        conn = psycopg2.connect(
-            host=os.environ.get('DB_HOST'),
-            user=os.environ.get('DB_USER'),
-            password=os.environ.get('DB_PASSWORD'),
-            database=os.environ.get('DB_NAME'),
-            port=os.environ.get('DB_PORT', 5432)
-        )
+        try:
+            conn = psycopg2.connect(
+                host=os.environ.get('DB_HOST'),
+                user=os.environ.get('DB_USER'),
+                password=os.environ.get('DB_PASSWORD'),
+                database=os.environ.get('DB_NAME', 'library-db'),
+                port=os.environ.get('DB_PORT', 5432)
+            )
+            return conn
+        except psycopg2.OperationalError as e:
+            if 'does not exist' in str(e):
+                # Create database if it doesn't exist
+                conn = psycopg2.connect(
+                    host=os.environ.get('DB_HOST'),
+                    user=os.environ.get('DB_USER'),
+                    password=os.environ.get('DB_PASSWORD'),
+                    database='postgres',
+                    port=os.environ.get('DB_PORT', 5432)
+                )
+                conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+                cursor = conn.cursor()
+                cursor.execute("CREATE DATABASE library_db")
+                cursor.close()
+                conn.close()
+                
+                # Reconnect to new database
+                conn = psycopg2.connect(
+                    host=os.environ.get('DB_HOST'),
+                    user=os.environ.get('DB_USER'),
+                    password=os.environ.get('DB_PASSWORD'),
+                    database='library_db',
+                    port=os.environ.get('DB_PORT', 5432)
+                )
+                return conn
+            else:
+                raise e
     else:
-        # Use local PostgreSQL for development
-        conn = psycopg2.connect(
-            host="localhost",
-            user="postgres",
-            password="password",
-            database="library_db"
-        )
-    return conn
+        # Local development fallback
+        import sqlite3
+        conn = sqlite3.connect('library.db')
+        conn.row_factory = sqlite3.Row
+        return conn
 
 # ---------------------------
 # LOGIN DECORATOR
@@ -388,7 +414,7 @@ def add_member():
             cursor.execute("INSERT INTO members (name, email, phone) VALUES (%s, %s, %s)", (name, email, phone))
             conn.commit()
             flash(f'✅ Member "{name}" added!', 'success')
-        except:
+        except Exception as e:
             flash('❌ Email already exists!', 'error')
         conn.close()
         return redirect(url_for('members'))
