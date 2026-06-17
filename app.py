@@ -14,16 +14,19 @@ app.secret_key = 'your-secret-key-change-this-in-production'
 # ---------------------------
 def get_db_connection():
     if os.environ.get('RENDER'):
+        # Use PostgreSQL on Render with 'postgres' as default database
+        db_name = os.environ.get('DB_NAME', 'postgres')
+        print(f"📊 Connecting to database: {db_name}")
         conn = psycopg2.connect(
             host=os.environ.get('DB_HOST'),
             user=os.environ.get('DB_USER'),
             password=os.environ.get('DB_PASSWORD'),
-            database=os.environ.get('DB_NAME', 'postgres'),
+            database=db_name,
             port=os.environ.get('DB_PORT', 5432)
         )
         return conn
     else:
-        # Local development fallback
+        # Local development - use SQLite
         import sqlite3
         conn = sqlite3.connect('library.db')
         conn.row_factory = sqlite3.Row
@@ -143,9 +146,6 @@ def init_database():
     finally:
         cursor.close()
         conn.close()
-
-# Call init_database when the app starts
-init_database()
 
 # ---------------------------
 # ROUTES
@@ -438,5 +438,13 @@ def delete_member(id):
 # RUN APP
 # ---------------------------
 if __name__ == '__main__':
+    # Initialize database on first run
+    if os.environ.get('RENDER'):
+        try:
+            print("🔧 Initializing database...")
+            init_database()
+        except Exception as e:
+            print(f"❌ Database init error: {e}")
+    
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
