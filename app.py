@@ -4,27 +4,31 @@ from functools import wraps
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this-in-production'
 
 # ---------------------------
-# DATABASE CONNECTION
+# DATABASE CONNECTION - FIXED
 # ---------------------------
 def get_db_connection():
-    if os.environ.get('RENDER'):
-        # HARDCODE the database name - THIS IS THE FIX
+    # Check if we're on Render by looking for RENDER environment variable
+    # OR by checking if DATABASE_URL exists
+    is_render = os.environ.get('RENDER') or os.environ.get('DATABASE_URL')
+    
+    if is_render:
+        print("📊 Connecting to PostgreSQL on Render...")
         conn = psycopg2.connect(
             host='dpg-d8p62cj6sc1c73cdt590-a.virginia-postgres.render.com',
             user='libraryuser',
             password='AaCrgEda9PjShZEWZq6dAJl6Un0m28ZB',
-            database='library_yiqs',  # <-- THIS IS THE FIX
+            database='library_yiqs',
             port=5432
         )
         return conn
     else:
         # Local development - use SQLite
+        print("💻 Connecting to SQLite locally...")
         import sqlite3
         conn = sqlite3.connect('library.db')
         conn.row_factory = sqlite3.Row
@@ -438,13 +442,22 @@ def delete_member(id):
 # RUN APP
 # ---------------------------
 if __name__ == '__main__':
-    # Initialize database on startup
-    if os.environ.get('RENDER'):
+    # Check if we're on Render
+    is_render = os.environ.get('RENDER') or os.environ.get('DATABASE_URL')
+    
+    if is_render:
         print("🚀 Starting on Render...")
         try:
             init_database()
         except Exception as e:
             print(f"❌ Database init error: {e}")
+    else:
+        print("💻 Starting locally...")
+        # Initialize SQLite locally
+        try:
+            init_database()
+        except Exception as e:
+            print(f"❌ Local database init error: {e}")
     
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
