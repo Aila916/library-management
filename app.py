@@ -1,32 +1,39 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
-import mysql.connector
 from datetime import date, timedelta, datetime
 from functools import wraps
-import re
-import traceback
 import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this-in-production'
 
-# Database connection
+# ---------------------------
+# DATABASE CONNECTION
+# ---------------------------
 def get_db_connection():
     if os.environ.get('RENDER'):
-        conn = mysql.connector.connect(
-            host=os.environ.get('DB_HOST', 'localhost'),
-            user=os.environ.get('DB_USER', 'root'),
-            password=os.environ.get('DB_PASSWORD', 'password'),
-            database=os.environ.get('DB_NAME', 'sale')
+        # Use PostgreSQL on Render
+        conn = psycopg2.connect(
+            host=os.environ.get('DB_HOST'),
+            user=os.environ.get('DB_USER'),
+            password=os.environ.get('DB_PASSWORD'),
+            database=os.environ.get('DB_NAME'),
+            port=os.environ.get('DB_PORT', 5432)
         )
     else:
-        conn = mysql.connector.connect(
+        # Use local PostgreSQL for development
+        conn = psycopg2.connect(
             host="localhost",
-            user="root",
+            user="postgres",
             password="password",
-            database="sale"
+            database="library_db"
         )
     return conn
 
+# ---------------------------
+# LOGIN DECORATOR
+# ---------------------------
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -37,24 +44,121 @@ def login_required(f):
     return decorated_function
 
 # ---------------------------
-# HOME ROUTE - THIS WAS MISSING
+# INITIALIZE DATABASE TABLES
 # ---------------------------
+def init_database():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # Create users table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) UNIQUE NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                email VARCHAR(100),
+                role VARCHAR(20) DEFAULT 'librarian'
+            )
+        """)
+        
+        # Create books table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS books (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                author VARCHAR(255) NOT NULL,
+                quantity INT DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create members table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS members (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                email VARCHAR(100) UNIQUE NOT NULL,
+                phone VARCHAR(20),
+                join_date DATE DEFAULT CURRENT_DATE,
+                status VARCHAR(20) DEFAULT 'active'
+            )
+        """)
+        
+        # Create borrow_records table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS borrow_records (
+                id SERIAL PRIMARY KEY,
+                book_id INT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+                member_id INT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+                borrow_date DATE NOT NULL,
+                due_date DATE NOT NULL,
+                return_date DATE,
+                status VARCHAR(20) DEFAULT 'borrowed'
+            )
+        """)
+        
+        # Insert default admin
+        cursor.execute("SELECT * FROM users WHERE username = 'admin'")
+        if not cursor.fetchone():
+            cursor.execute(
+                "INSERT INTO users (username, password, email, role) VALUES (%s, %s, %s, %s)",
+                ('admin', 'admin123', 'admin@library.com', 'admin')
+            )
+        
+        # Insert sample books
+        cursor.execute("SELECT COUNT(*) FROM books")
+        if cursor.fetchone()[0] == 0:
+            books = [
+                ("The Great Gatsby", "F. Scott Fitzgerald", 5),
+                ("To Kill a Mockingbird", "Harper Lee", 3),
+                ("1984", "George Orwell", 4),
+                ("Pride and Prejudice", "Jane Austen", 2),
+                ("The Catcher in the Rye", "J.D. Salinger", 1)
+            ]
+            cursor.executemany(
+                "INSERT INTO books (title, author, quantity) VALUES (%s, %s, %s)",
+                books
+            )
+        
+        # Insert sample members
+        cursor.execute("SELECT COUNT(*) FROM members")
+        if cursor.fetchone()[0] == 0:
+            members = [
+                ("John Doe", "john@example.com", "1234567890"),
+                ("Jane Smith", "jane@example.com", "0987654321"),
+                ("Bob Johnson", "bob@example.com", "5555555555")
+            ]
+            cursor.executemany(
+                "INSERT INTO members (name, email, phone, status) VALUES (%s, %s, %s, 'active')",
+                members
+            )
+        
+        conn.commit()
+        print("✅ Database initialized successfully!")
+    except Exception as e:
+        print(f"❌ Database error: {e}")
+        conn.rollback()
+    finally:
+        cursor.close()
+        conn.close()
+
+# ---------------------------
+# ROUTES
+# ---------------------------
+
 @app.route('/')
 def home():
     if 'user_id' in session:
         return redirect(url_for('dashboard'))
     return redirect(url_for('login'))
 
-# ---------------------------
-# LOGIN / LOGOUT
-# ---------------------------
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, password))
         user = cursor.fetchone()
         conn.close()
@@ -72,14 +176,11 @@ def logout():
     flash('Logged out!', 'info')
     return redirect(url_for('login'))
 
-# ---------------------------
-# DASHBOARD
-# ---------------------------
 @app.route('/dashboard')
 @login_required
 def dashboard():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     
     cursor.execute("SELECT COUNT(*) as total FROM books")
     total_books = cursor.fetchone()['total']
@@ -115,14 +216,11 @@ def dashboard():
                          low_stock=low_stock,
                          recent=recent)
 
-# ---------------------------
-# BOOKS
-# ---------------------------
 @app.route('/books')
 @login_required
 def books():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT * FROM books ORDER BY title")
     books = cursor.fetchall()
     conn.close()
@@ -148,7 +246,7 @@ def add_book():
 @login_required
 def edit_book(id):
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     if request.method == 'POST':
         title = request.form['title']
         author = request.form['author']
@@ -174,14 +272,11 @@ def delete_book(id):
     flash('🗑️ Book deleted!', 'info')
     return redirect(url_for('books'))
 
-# ---------------------------
-# BORROW BOOKS
-# ---------------------------
 @app.route('/borrow_book', methods=['GET', 'POST'])
 @login_required
 def borrow_book():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     
     if request.method == 'POST':
         book_id = request.form['book_id']
@@ -232,21 +327,18 @@ def borrow_book():
                          today=date.today(),
                          default_due=date.today() + timedelta(days=14))
 
-# ---------------------------
-# BORROWED
-# ---------------------------
 @app.route('/borrowed')
 @login_required
 def borrowed():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     
-    cursor.execute("UPDATE borrow_records SET status='overdue' WHERE status='borrowed' AND due_date < CURDATE()")
+    cursor.execute("UPDATE borrow_records SET status='overdue' WHERE status='borrowed' AND due_date < CURRENT_DATE")
     conn.commit()
     
     cursor.execute("""
         SELECT br.*, b.title as book_title, m.name as member_name,
-        DATEDIFF(CURDATE(), br.due_date) as days_overdue
+        EXTRACT(DAY FROM (CURRENT_DATE - br.due_date)) as days_overdue
         FROM borrow_records br
         JOIN books b ON br.book_id = b.id
         JOIN members m ON br.member_id = m.id
@@ -261,26 +353,23 @@ def borrowed():
 @login_required
 def return_book(id):
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     
     cursor.execute("SELECT * FROM borrow_records WHERE id=%s", (id,))
     record = cursor.fetchone()
     if record and record['status'] != 'returned':
-        cursor.execute("UPDATE borrow_records SET return_date=CURDATE(), status='returned' WHERE id=%s", (id,))
+        cursor.execute("UPDATE borrow_records SET return_date=CURRENT_DATE, status='returned' WHERE id=%s", (id,))
         cursor.execute("UPDATE books SET quantity = quantity + 1 WHERE id=%s", (record['book_id'],))
         conn.commit()
         flash('✅ Book returned!', 'success')
     conn.close()
     return redirect(url_for('borrowed'))
 
-# ---------------------------
-# MEMBERS
-# ---------------------------
 @app.route('/members')
 @login_required
 def members():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT * FROM members ORDER BY name")
     members = cursor.fetchall()
     conn.close()
@@ -309,7 +398,7 @@ def add_member():
 @login_required
 def edit_member(id):
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     if request.method == 'POST':
         name = request.form['name']
         email = request.form['email']
@@ -344,5 +433,12 @@ def delete_member(id):
 # RUN APP
 # ---------------------------
 if __name__ == '__main__':
+    # Initialize database on first run
+    if os.environ.get('RENDER'):
+        try:
+            init_database()
+        except Exception as e:
+            print(f"Database init error: {e}")
+    
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
