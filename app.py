@@ -14,42 +14,14 @@ app.secret_key = 'your-secret-key-change-this-in-production'
 # ---------------------------
 def get_db_connection():
     if os.environ.get('RENDER'):
-        try:
-            conn = psycopg2.connect(
-                host=os.environ.get('DB_HOST'),
-                user=os.environ.get('DB_USER'),
-                password=os.environ.get('DB_PASSWORD'),
-                database=os.environ.get('DB_NAME', 'library-db'),
-                port=os.environ.get('DB_PORT', 5432)
-            )
-            return conn
-        except psycopg2.OperationalError as e:
-            if 'does not exist' in str(e):
-                # Create database if it doesn't exist
-                conn = psycopg2.connect(
-                    host=os.environ.get('DB_HOST'),
-                    user=os.environ.get('DB_USER'),
-                    password=os.environ.get('DB_PASSWORD'),
-                    database='postgres',
-                    port=os.environ.get('DB_PORT', 5432)
-                )
-                conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-                cursor = conn.cursor()
-                cursor.execute("CREATE DATABASE library_db")
-                cursor.close()
-                conn.close()
-                
-                # Reconnect to new database
-                conn = psycopg2.connect(
-                    host=os.environ.get('DB_HOST'),
-                    user=os.environ.get('DB_USER'),
-                    password=os.environ.get('DB_PASSWORD'),
-                    database='library_db',
-                    port=os.environ.get('DB_PORT', 5432)
-                )
-                return conn
-            else:
-                raise e
+        conn = psycopg2.connect(
+            host=os.environ.get('DB_HOST'),
+            user=os.environ.get('DB_USER'),
+            password=os.environ.get('DB_PASSWORD'),
+            database=os.environ.get('DB_NAME', 'library_db'),
+            port=os.environ.get('DB_PORT', 5432)
+        )
+        return conn
     else:
         # Local development fallback
         import sqlite3
@@ -73,6 +45,7 @@ def login_required(f):
 # INITIALIZE DATABASE TABLES
 # ---------------------------
 def init_database():
+    """Create all tables if they don't exist"""
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -123,15 +96,16 @@ def init_database():
             )
         """)
         
-        # Insert default admin
+        # Insert default admin if not exists
         cursor.execute("SELECT * FROM users WHERE username = 'admin'")
         if not cursor.fetchone():
             cursor.execute(
                 "INSERT INTO users (username, password, email, role) VALUES (%s, %s, %s, %s)",
                 ('admin', 'admin123', 'admin@library.com', 'admin')
             )
+            print("✅ Admin user created!")
         
-        # Insert sample books
+        # Insert sample books if empty
         cursor.execute("SELECT COUNT(*) FROM books")
         if cursor.fetchone()[0] == 0:
             books = [
@@ -145,8 +119,9 @@ def init_database():
                 "INSERT INTO books (title, author, quantity) VALUES (%s, %s, %s)",
                 books
             )
+            print("✅ Sample books added!")
         
-        # Insert sample members
+        # Insert sample members if empty
         cursor.execute("SELECT COUNT(*) FROM members")
         if cursor.fetchone()[0] == 0:
             members = [
@@ -158,6 +133,7 @@ def init_database():
                 "INSERT INTO members (name, email, phone, status) VALUES (%s, %s, %s, 'active')",
                 members
             )
+            print("✅ Sample members added!")
         
         conn.commit()
         print("✅ Database initialized successfully!")
@@ -167,6 +143,9 @@ def init_database():
     finally:
         cursor.close()
         conn.close()
+
+# Call init_database when the app starts
+init_database()
 
 # ---------------------------
 # ROUTES
@@ -459,12 +438,5 @@ def delete_member(id):
 # RUN APP
 # ---------------------------
 if __name__ == '__main__':
-    # Initialize database on first run
-    if os.environ.get('RENDER'):
-        try:
-            init_database()
-        except Exception as e:
-            print(f"Database init error: {e}")
-    
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
