@@ -18,7 +18,7 @@ def get_db_connection():
             host=os.environ.get('DB_HOST'),
             user=os.environ.get('DB_USER'),
             password=os.environ.get('DB_PASSWORD'),
-            database=os.environ.get('DB_NAME', 'library_db'),
+            database=os.environ.get('DB_NAME', 'library'),
             port=os.environ.get('DB_PORT', 5432)
         )
         return conn
