@@ -4,6 +4,7 @@ from functools import wraps
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import traceback
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this-in-production'
@@ -12,7 +13,6 @@ app.secret_key = 'your-secret-key-change-this-in-production'
 # DATABASE CONNECTION
 # ---------------------------
 def get_db_connection():
-    # Always use PostgreSQL on Render
     print("📊 Connecting to PostgreSQL...")
     conn = psycopg2.connect(
         host='dpg-d8p62cj6sc1c73cdt590-a.virginia-postgres.render.com',
@@ -39,7 +39,6 @@ def login_required(f):
 # INITIALIZE DATABASE TABLES
 # ---------------------------
 def init_database():
-    """Create all tables if they don't exist"""
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -83,8 +82,8 @@ def init_database():
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS borrow_records (
                 id SERIAL PRIMARY KEY,
-                book_id INT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
-                member_id INT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+                book_id INT NOT NULL,
+                member_id INT NOT NULL,
                 borrow_date DATE NOT NULL,
                 due_date DATE NOT NULL,
                 return_date DATE,
@@ -92,7 +91,7 @@ def init_database():
             )
         """)
         
-        # Insert default admin if not exists
+        # Insert default admin
         cursor.execute("SELECT * FROM users WHERE username = 'admin'")
         if not cursor.fetchone():
             cursor.execute(
@@ -101,7 +100,7 @@ def init_database():
             )
             print("✅ Admin user created!")
         
-        # Insert sample books if empty
+        # Insert sample books
         cursor.execute("SELECT COUNT(*) FROM books")
         if cursor.fetchone()[0] == 0:
             books = [
@@ -117,7 +116,7 @@ def init_database():
             )
             print("✅ Sample books added!")
         
-        # Insert sample members if empty
+        # Insert sample members
         cursor.execute("SELECT COUNT(*) FROM members")
         if cursor.fetchone()[0] == 0:
             members = [
@@ -135,12 +134,13 @@ def init_database():
         print("✅ Database initialized successfully!")
     except Exception as e:
         print(f"❌ Database error: {e}")
+        print(traceback.format_exc())
         conn.rollback()
     finally:
         cursor.close()
         conn.close()
 
-# Initialize database when app starts
+# Initialize database
 print("🚀 Initializing database...")
 init_database()
 
@@ -179,6 +179,7 @@ def login():
                 print(f"❌ Login failed: {username}")
         except Exception as e:
             print(f"❌ Login error: {e}")
+            print(traceback.format_exc())
             flash('An error occurred. Please try again.', 'error')
     
     return render_template('login.html')
@@ -223,6 +224,7 @@ def dashboard():
         
     except Exception as e:
         print(f"❌ Dashboard error: {e}")
+        print(traceback.format_exc())
         total_books = 0
         available = 0
         borrowed = 0
@@ -250,6 +252,7 @@ def books():
         books = cursor.fetchall()
     except Exception as e:
         print(f"❌ Books error: {e}")
+        print(traceback.format_exc())
         books = []
     finally:
         conn.close()
@@ -270,6 +273,7 @@ def add_book():
             flash(f'✅ "{title}" added successfully!', 'success')
         except Exception as e:
             print(f"❌ Add book error: {e}")
+            print(traceback.format_exc())
             flash('Error adding book!', 'error')
         finally:
             conn.close()
@@ -292,6 +296,7 @@ def edit_book(id):
             flash('✅ Book updated!', 'success')
         except Exception as e:
             print(f"❌ Edit book error: {e}")
+            print(traceback.format_exc())
             flash('Error updating book!', 'error')
         finally:
             conn.close()
@@ -302,6 +307,7 @@ def edit_book(id):
         book = cursor.fetchone()
     except Exception as e:
         print(f"❌ Get book error: {e}")
+        print(traceback.format_exc())
         book = None
     finally:
         conn.close()
@@ -322,6 +328,7 @@ def delete_book(id):
         flash('🗑️ Book deleted!', 'info')
     except Exception as e:
         print(f"❌ Delete book error: {e}")
+        print(traceback.format_exc())
         flash('Error deleting book!', 'error')
     finally:
         conn.close()
@@ -391,6 +398,7 @@ def borrow_book():
             
         except Exception as e:
             print(f"❌ Borrow error: {e}")
+            print(traceback.format_exc())
             flash('Error borrowing book!', 'error')
             conn.rollback()
         finally:
@@ -418,6 +426,7 @@ def borrow_book():
         
     except Exception as e:
         print(f"❌ Borrow form error: {e}")
+        print(traceback.format_exc())
         books = []
         members = []
         current_borrows = []
@@ -432,15 +441,18 @@ def borrow_book():
                          default_due=date.today() + timedelta(days=14))
 
 # ---------------------------
-# BORROWED BOOKS VIEW
+# BORROWED BOOKS VIEW - FIXED
 # ---------------------------
 @app.route('/borrowed')
 @login_required
 def borrowed():
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
+    records = []
     
     try:
+        print("📊 Fetching borrowed records...")
+        
         # Update overdue status
         cursor.execute("""
             UPDATE borrow_records 
@@ -448,8 +460,9 @@ def borrowed():
             WHERE status='borrowed' AND due_date < CURRENT_DATE
         """)
         conn.commit()
+        print("✅ Overdue status updated")
         
-        # Get all borrow records with details
+        # Get all borrow records with details - SIMPLIFIED QUERY
         cursor.execute("""
             SELECT 
                 br.id,
@@ -462,18 +475,19 @@ def borrowed():
                 b.title as book_title,
                 b.author as book_author,
                 m.name as member_name,
-                m.email as member_email,
-                EXTRACT(DAY FROM (CURRENT_DATE - br.due_date)) as days_overdue
+                m.email as member_email
             FROM borrow_records br
-            JOIN books b ON br.book_id = b.id
-            JOIN members m ON br.member_id = m.id
+            LEFT JOIN books b ON br.book_id = b.id
+            LEFT JOIN members m ON br.member_id = m.id
             ORDER BY br.borrow_date DESC
         """)
         records = cursor.fetchall()
+        print(f"✅ Found {len(records)} records")
         
     except Exception as e:
         print(f"❌ Borrowed page error: {e}")
-        flash('Error loading borrowed books', 'error')
+        print(traceback.format_exc())
+        flash('Error loading borrowed books. Please check logs.', 'error')
         records = []
     finally:
         conn.close()
@@ -490,6 +504,8 @@ def return_book(id):
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     
     try:
+        print(f"📊 Returning book record ID: {id}")
+        
         # Get the borrow record
         cursor.execute("SELECT * FROM borrow_records WHERE id=%s", (id,))
         record = cursor.fetchone()
@@ -516,9 +532,11 @@ def return_book(id):
         
         conn.commit()
         flash('✅ Book returned successfully!', 'success')
+        print(f"✅ Book returned: ID {id}")
         
     except Exception as e:
         print(f"❌ Return error: {e}")
+        print(traceback.format_exc())
         flash('Error returning book!', 'error')
         conn.rollback()
     finally:
@@ -544,6 +562,7 @@ def members():
         members = cursor.fetchall()
     except Exception as e:
         print(f"❌ Members error: {e}")
+        print(traceback.format_exc())
         members = []
     finally:
         conn.close()
@@ -564,6 +583,7 @@ def add_member():
             flash(f'✅ Member "{name}" added!', 'success')
         except Exception as e:
             print(f"❌ Add member error: {e}")
+            print(traceback.format_exc())
             flash('❌ Email already exists!', 'error')
         finally:
             conn.close()
@@ -588,6 +608,7 @@ def edit_member(id):
             flash('✅ Member updated!', 'success')
         except Exception as e:
             print(f"❌ Edit member error: {e}")
+            print(traceback.format_exc())
             flash('❌ Email already exists!', 'error')
         finally:
             conn.close()
@@ -598,6 +619,7 @@ def edit_member(id):
         member = cursor.fetchone()
     except Exception as e:
         print(f"❌ Get member error: {e}")
+        print(traceback.format_exc())
         member = None
     finally:
         conn.close()
@@ -618,6 +640,7 @@ def delete_member(id):
         flash('🗑️ Member deleted!', 'info')
     except Exception as e:
         print(f"❌ Delete member error: {e}")
+        print(traceback.format_exc())
         flash('Error deleting member!', 'error')
     finally:
         conn.close()
