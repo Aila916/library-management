@@ -14,15 +14,13 @@ app.secret_key = 'your-secret-key-change-this-in-production'
 # ---------------------------
 def get_db_connection():
     if os.environ.get('RENDER'):
-        # Use PostgreSQL on Render with 'postgres' as default database
-        db_name = os.environ.get('DB_NAME', 'postgres')
-        print(f"📊 Connecting to database: {db_name}")
+        # HARDCODE the database name - THIS IS THE FIX
         conn = psycopg2.connect(
-            host=os.environ.get('DB_HOST'),
-            user=os.environ.get('DB_USER'),
-            password=os.environ.get('DB_PASSWORD'),
-            database=db_name,
-            port=os.environ.get('DB_PORT', 5432)
+            host='dpg-d8p62cj6sc1c73cdt590-a.virginia-postgres.render.com',
+            user='libraryuser',
+            password='AaCrgEda9PjShZEWZq6dAJl6Un0m28ZB',
+            database='library_yiqs',  # <-- THIS IS THE FIX
+            port=5432
         )
         return conn
     else:
@@ -52,6 +50,8 @@ def init_database():
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
+        print("📊 Creating tables...")
+        
         # Create users table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -438,10 +438,10 @@ def delete_member(id):
 # RUN APP
 # ---------------------------
 if __name__ == '__main__':
-    # Initialize database on first run
+    # Initialize database on startup
     if os.environ.get('RENDER'):
+        print("🚀 Starting on Render...")
         try:
-            print("🔧 Initializing database...")
             init_database()
         except Exception as e:
             print(f"❌ Database init error: {e}")
