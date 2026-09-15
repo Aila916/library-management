@@ -2,13 +2,17 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from functools import wraps
 import mysql.connector
 from datetime import date, datetime
+import os
 
 app = Flask(__name__)
 
 # =========================================================
 # FLASK SECRET KEY
 # =========================================================
-app.secret_key = "library_management_secret_key_2026"
+app.secret_key = os.getenv(
+    "SECRET_KEY",
+    "library_management_secret_key_2026"
+)
 
 # Make sessions last for the browser session
 app.config["SESSION_PERMANENT"] = True
@@ -19,10 +23,11 @@ app.config["SESSION_PERMANENT"] = True
 # =========================================================
 def get_db_connection():
     return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="password",
-        database="library_management"
+        host=os.getenv("DB_HOST", "localhost"),
+        port=int(os.getenv("DB_PORT", "3306")),
+        user=os.getenv("DB_USER", "root"),
+        password=os.getenv("DB_PASSWORD", "password"),
+        database=os.getenv("DB_NAME", "library_management")
     )
 
 
@@ -370,10 +375,8 @@ def login():
 
             if user and str(user["password"]) == password:
 
-                # Remove any old session
                 session.clear()
 
-                # Create new session
                 session["user_id"] = user["id"]
                 session["username"] = user["username"]
                 session["role"] = user["role"]

@@ -19,6 +19,7 @@
         </div>
 
         <div>
+
             <a href="{{ url_for('overdue_books') }}"
                class="btn btn-outline-danger me-2">
                 <i class="bi bi-exclamation-triangle"></i>
@@ -30,12 +31,13 @@
                 <i class="bi bi-plus-circle"></i>
                 Borrow Book
             </a>
+
         </div>
 
     </div>
 
 
-    {% if borrowed_books %}
+    {% if records %}
 
     <div class="card shadow-sm">
 
@@ -49,7 +51,7 @@
                 </strong>
 
                 <span class="badge bg-primary">
-                    {{ borrowed_books|length }} Books
+                    {{ records|length }} Books
                 </span>
 
             </div>
@@ -82,7 +84,7 @@
 
                     <tbody>
 
-                        {% for record in borrowed_books %}
+                        {% for record in records %}
 
                         <tr>
 
@@ -93,7 +95,7 @@
 
                             <td>
                                 <strong>
-                                    {{ record.fullname }}
+                                    {{ record.member_name }}
                                 </strong>
                             </td>
 
@@ -105,7 +107,7 @@
 
                             <td>
                                 <strong>
-                                    {{ record.title }}
+                                    {{ record.book_title }}
                                 </strong>
                             </td>
 
@@ -121,51 +123,24 @@
 
 
                             <td>
-
                                 {{ record.due_date }}
-
                             </td>
 
 
                             <td>
 
-                                {% if record.is_overdue %}
-
-                                    <span class="badge bg-danger">
-                                        <i class="bi bi-exclamation-triangle"></i>
-                                        Overdue
-                                    </span>
-
-                                    <br>
-
-                                    <small class="text-danger fw-bold">
-                                        {{ record.days_overdue }}
-                                        {% if record.days_overdue == 1 %}
-                                            day
-                                        {% else %}
-                                            days
-                                        {% endif %}
-                                        overdue
-                                    </small>
-
-                                {% else %}
+                                {% if record.status == 'Borrowed' %}
 
                                     <span class="badge bg-warning text-dark">
                                         <i class="bi bi-clock"></i>
                                         Borrowed
                                     </span>
 
-                                    <br>
+                                {% else %}
 
-                                    <small class="text-muted">
-                                        {{ record.days_remaining }}
-                                        {% if record.days_remaining == 1 %}
-                                            day
-                                        {% else %}
-                                            days
-                                        {% endif %}
-                                        remaining
-                                    </small>
+                                    <span class="badge bg-secondary">
+                                        {{ record.status }}
+                                    </span>
 
                                 {% endif %}
 

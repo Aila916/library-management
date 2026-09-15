@@ -1,4 +1,3 @@
-```html
 {% extends "base.html" %}
 
 {% block page_title %}Borrowing History{% endblock %}
@@ -44,7 +43,7 @@
     </div>
 
 
-    {% if records %}
+    {% if history %}
 
     <!-- RECORDS TABLE -->
 
@@ -58,7 +57,7 @@
             </strong>
 
             <span class="badge bg-primary float-end">
-                {{ records|length }} Records
+                {{ history|length }} Records
             </span>
 
         </div>
@@ -74,21 +73,13 @@
                         <tr>
 
                             <th>#</th>
-
                             <th>Member</th>
-
                             <th>Email</th>
-
                             <th>Book</th>
-
                             <th>Author</th>
-
                             <th>Borrow Date</th>
-
                             <th>Due Date</th>
-
                             <th>Return Date</th>
-
                             <th>Status</th>
 
                         </tr>
@@ -97,7 +88,7 @@
 
                     <tbody>
 
-                        {% for record in records %}
+                        {% for record in history %}
 
                         <tr>
 
@@ -107,7 +98,7 @@
 
                             <td>
                                 <strong>
-                                    {{ record.fullname }}
+                                    {{ record.member_name }}
                                 </strong>
                             </td>
 
@@ -117,7 +108,7 @@
 
                             <td>
                                 <strong>
-                                    {{ record.title }}
+                                    {{ record.book_title }}
                                 </strong>
                             </td>
 
@@ -227,4 +218,3 @@
 </div>
 
 {% endblock %}
-```
