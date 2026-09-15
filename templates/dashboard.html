@@ -1,73 +1,982 @@
 {% extends "base.html" %}
 
-{% block page_title %}Dashboard{% endblock %}
+{% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="row g-4">
-    <div class="col-md-3">
-        <div class="stat-card">
-            <div class="icon blue"><i class="bi bi-book"></i></div>
-            <h3>{{ total_books }}</h3>
-            <p>Total Books</p>
+
+<div class="container-fluid">
+
+    <!-- HEADER -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+
+        <div>
+            <h2 class="fw-bold mb-1">
+                <i class="bi bi-speedometer2 me-2"></i>
+                Library Dashboard
+            </h2>
+
+            <p class="text-muted mb-0">
+                Overview of library operations and performance
+            </p>
         </div>
+
+        <a href="{{ url_for('add_book') }}" class="btn btn-primary">
+            <i class="bi bi-plus-circle me-1"></i>
+            Add Book
+        </a>
+
     </div>
-    <div class="col-md-3">
-        <div class="stat-card">
-            <div class="icon green"><i class="bi bi-check-circle"></i></div>
-            <h3>{{ available }}</h3>
-            <p>Available</p>
+
+
+    <!-- OVERVIEW -->
+    <h5 class="fw-bold mb-3">
+        <i class="bi bi-grid-1x2-fill me-2"></i>
+        Overview
+    </h5>
+
+
+    <!-- MAIN STATISTICS -->
+    <div class="row g-3 mb-4">
+
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <small class="text-muted">Total Books</small>
+                            <h3 class="fw-bold mt-2">{{ total_books }}</h3>
+                        </div>
+                        <div class="fs-1 text-primary">
+                            <i class="bi bi-book"></i>
+                        </div>
+                    </div>
+                    <small class="text-muted">
+                        Books in library
+                    </small>
+                </div>
+            </div>
         </div>
-    </div>
-    <div class="col-md-3">
-        <div class="stat-card">
-            <div class="icon orange"><i class="bi bi-clock"></i></div>
-            <h3>{{ borrowed }}</h3>
-            <p>Borrowed</p>
+
+
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <small class="text-muted">Available Copies</small>
+                            <h3 class="fw-bold mt-2">{{ available }}</h3>
+                        </div>
+                        <div class="fs-1 text-success">
+                            <i class="bi bi-check-circle"></i>
+                        </div>
+                    </div>
+                    <small class="text-muted">
+                        Currently available
+                    </small>
+                </div>
+            </div>
         </div>
-    </div>
-    <div class="col-md-3">
-        <div class="stat-card">
-            <div class="icon red"><i class="bi bi-exclamation-triangle"></i></div>
-            <h3>{{ overdue }}</h3>
-            <p>Overdue</p>
+
+
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <small class="text-muted">Currently Borrowed</small>
+                            <h3 class="fw-bold mt-2">{{ borrowed }}</h3>
+                        </div>
+                        <div class="fs-1 text-warning">
+                            <i class="bi bi-journal-arrow-up"></i>
+                        </div>
+                    </div>
+                    <small class="text-muted">
+                        Active borrowing records
+                    </small>
+                </div>
+            </div>
         </div>
+
+
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <small class="text-muted">Total Members</small>
+                            <h3 class="fw-bold mt-2">{{ total_members }}</h3>
+                        </div>
+                        <div class="fs-1 text-info">
+                            <i class="bi bi-people"></i>
+                        </div>
+                    </div>
+                    <small class="text-muted">
+                        Registered members
+                    </small>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <small class="text-muted">Overdue Books</small>
+                            <h3 class="fw-bold mt-2 text-danger">
+                                {{ overdue }}
+                            </h3>
+                        </div>
+                        <div class="fs-1 text-danger">
+                            <i class="bi bi-exclamation-triangle"></i>
+                        </div>
+                    </div>
+                    <small class="text-muted">
+                        Currently overdue
+                    </small>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <small class="text-muted">Unpaid Fines</small>
+                            <h3 class="fw-bold mt-2">
+                                KSh {{ "%.2f"|format(total_fine|float) }}
+                            </h3>
+                        </div>
+                        <div class="fs-1 text-danger">
+                            <i class="bi bi-cash-coin"></i>
+                        </div>
+                    </div>
+                    <small class="text-muted">
+                        Outstanding fines
+                    </small>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <small class="text-muted">Low Stock Books</small>
+                            <h3 class="fw-bold mt-2 text-warning">
+                                {{ low_stock_count }}
+                            </h3>
+                        </div>
+                        <div class="fs-1 text-warning">
+                            <i class="bi bi-box-seam"></i>
+                        </div>
+                    </div>
+                    <small class="text-muted">
+                        Need attention
+                    </small>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <small class="text-muted">Borrowing History</small>
+                            <h3 class="fw-bold mt-2">
+                                <i class="bi bi-clock-history"></i>
+                            </h3>
+                        </div>
+                        <div class="fs-1 text-secondary">
+                            <i class="bi bi-archive"></i>
+                        </div>
+                    </div>
+
+                    <a href="{{ url_for('borrow_history') }}"
+                       class="small text-decoration-none">
+                        View complete history →
+                    </a>
+                </div>
+            </div>
+        </div>
+
     </div>
+
+
+    <!-- RETURN PERFORMANCE -->
+    <div class="card border-0 shadow-sm mb-4">
+
+        <div class="card-header bg-white border-0 pt-4">
+            <h5 class="fw-bold">
+                <i class="bi bi-arrow-return-left me-2"></i>
+                Overdue & Return Performance
+            </h5>
+        </div>
+
+        <div class="card-body">
+
+            <div class="row g-3">
+
+                <div class="col-md-3">
+                    <div class="p-3 bg-light rounded">
+                        <small class="text-muted">
+                            Total Returned
+                        </small>
+
+                        <h4 class="fw-bold mt-2">
+                            {{ returned_count }}
+                        </h4>
+                    </div>
+                </div>
+
+
+                <div class="col-md-3">
+                    <div class="p-3 bg-light rounded">
+                        <small class="text-muted">
+                            On-Time Returns
+                        </small>
+
+                        <h4 class="fw-bold mt-2 text-success">
+                            {{ on_time_returns }}
+                        </h4>
+                    </div>
+                </div>
+
+
+                <div class="col-md-3">
+                    <div class="p-3 bg-light rounded">
+                        <small class="text-muted">
+                            Late Returns
+                        </small>
+
+                        <h4 class="fw-bold mt-2 text-warning">
+                            {{ late_returns }}
+                        </h4>
+                    </div>
+                </div>
+
+
+                <div class="col-md-3">
+                    <div class="p-3 bg-light rounded">
+                        <small class="text-muted">
+                            Currently Overdue
+                        </small>
+
+                        <h4 class="fw-bold mt-2 text-danger">
+                            {{ current_overdue }}
+                        </h4>
+                    </div>
+                </div>
+
+            </div>
+
+
+            <div class="mt-4">
+
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">
+                        Average delay for late returns
+                    </span>
+
+                    <strong>
+                        {{ avg_late_days }} days
+                    </strong>
+                </div>
+
+                <div class="progress" style="height: 10px;">
+                    {% set performance =
+                        ((on_time_returns / returned_count * 100)
+                        if returned_count else 0)
+                    %}
+
+                    <div class="progress-bar"
+                         style="width: {{ performance }}%;">
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- CHARTS -->
+    <div class="row g-4 mb-4">
+
+        <div class="col-lg-7">
+
+            <div class="card border-0 shadow-sm h-100">
+
+                <div class="card-header bg-white border-0 pt-4">
+
+                    <h5 class="fw-bold">
+                        <i class="bi bi-bar-chart me-2"></i>
+                        Monthly Borrowing Activity
+                    </h5>
+
+                </div>
+
+                <div class="card-body">
+
+                    <canvas id="monthlyBorrowingChart"
+                            height="120"></canvas>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="col-lg-5">
+
+            <div class="card border-0 shadow-sm h-100">
+
+                <div class="card-header bg-white border-0 pt-4">
+
+                    <h5 class="fw-bold">
+                        <i class="bi bi-pie-chart me-2"></i>
+                        Books by Category
+                    </h5>
+
+                </div>
+
+                <div class="card-body">
+
+                    <canvas id="categoryChart"
+                            height="200"></canvas>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- RETURN CHART -->
+    <div class="row g-4 mb-4">
+
+        <div class="col-lg-6">
+
+            <div class="card border-0 shadow-sm">
+
+                <div class="card-header bg-white border-0 pt-4">
+
+                    <h5 class="fw-bold">
+                        <i class="bi bi-graph-up me-2"></i>
+                        Return Performance
+                    </h5>
+
+                </div>
+
+                <div class="card-body">
+
+                    <canvas id="returnChart"
+                            height="220"></canvas>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- PERFORMANCE SUMMARY -->
+        <div class="col-lg-6">
+
+            <div class="card border-0 shadow-sm h-100">
+
+                <div class="card-header bg-white border-0 pt-4">
+
+                    <h5 class="fw-bold">
+                        <i class="bi bi-speedometer me-2"></i>
+                        Performance Summary
+                    </h5>
+
+                </div>
+
+                <div class="card-body">
+
+                    {% set return_rate =
+                        ((on_time_returns / returned_count * 100)
+                        if returned_count else 0)
+                    %}
+
+                    <div class="mb-4">
+
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>On-Time Return Rate</span>
+                            <strong>
+                                {{ "%.1f"|format(return_rate) }}%
+                            </strong>
+                        </div>
+
+                        <div class="progress">
+                            <div class="progress-bar"
+                                 style="width: {{ return_rate }}%;">
+                            </div>
+                        </div>
+
+                    </div>
+
+
+                    {% set availability_rate =
+                        ((available / (available + borrowed) * 100)
+                        if (available + borrowed) else 0)
+                    %}
+
+                    <div class="mb-4">
+
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Book Availability</span>
+                            <strong>
+                                {{ "%.1f"|format(availability_rate) }}%
+                            </strong>
+                        </div>
+
+                        <div class="progress">
+                            <div class="progress-bar"
+                                 style="width: {{ availability_rate }}%;">
+                            </div>
+                        </div>
+
+                    </div>
+
+
+                    {% set overdue_rate =
+                        ((overdue / borrowed * 100)
+                        if borrowed else 0)
+                    %}
+
+                    <div>
+
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Overdue Rate</span>
+                            <strong>
+                                {{ "%.1f"|format(overdue_rate) }}%
+                            </strong>
+                        </div>
+
+                        <div class="progress">
+                            <div class="progress-bar"
+                                 style="width: {{ overdue_rate }}%;">
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- MOST BORROWED + ACTIVE MEMBERS -->
+    <div class="row g-4 mb-4">
+
+        <div class="col-lg-6">
+
+            <div class="card border-0 shadow-sm">
+
+                <div class="card-header bg-white border-0 pt-4">
+
+                    <h5 class="fw-bold">
+                        <i class="bi bi-bookmark-star me-2"></i>
+                        Most Borrowed Books
+                    </h5>
+
+                </div>
+
+                <div class="card-body p-0">
+
+                    {% if most_borrowed %}
+
+                    <div class="table-responsive">
+
+                        <table class="table table-hover mb-0">
+
+                            <thead>
+                                <tr>
+                                    <th>Book</th>
+                                    <th>Author</th>
+                                    <th>Borrowed</th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+
+                            {% for book in most_borrowed %}
+
+                                <tr>
+
+                                    <td class="fw-semibold">
+                                        {{ book.title }}
+                                    </td>
+
+                                    <td>
+                                        {{ book.author }}
+                                    </td>
+
+                                    <td>
+                                        <span class="badge bg-primary">
+                                            {{ book.borrow_count }}
+                                        </span>
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                    {% else %}
+
+                    <div class="p-4 text-center text-muted">
+                        No borrowing data available.
+                    </div>
+
+                    {% endif %}
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="col-lg-6">
+
+            <div class="card border-0 shadow-sm">
+
+                <div class="card-header bg-white border-0 pt-4">
+
+                    <h5 class="fw-bold">
+                        <i class="bi bi-person-check me-2"></i>
+                        Most Active Members
+                    </h5>
+
+                </div>
+
+                <div class="card-body p-0">
+
+                    {% if active_members %}
+
+                    <div class="table-responsive">
+
+                        <table class="table table-hover mb-0">
+
+                            <thead>
+                                <tr>
+                                    <th>Member</th>
+                                    <th>Borrowings</th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+
+                            {% for member in active_members %}
+
+                                <tr>
+
+                                    <td class="fw-semibold">
+                                        {{ member.fullname }}
+                                    </td>
+
+                                    <td>
+                                        <span class="badge bg-success">
+                                            {{ member.borrow_count }}
+                                        </span>
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                    {% else %}
+
+                    <div class="p-4 text-center text-muted">
+                        No member activity available.
+                    </div>
+
+                    {% endif %}
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- LOW STOCK + RECENT ACTIVITY -->
+    <div class="row g-4 mb-4">
+
+        <div class="col-lg-5">
+
+            <div class="card border-0 shadow-sm">
+
+                <div class="card-header bg-white border-0 pt-4">
+
+                    <h5 class="fw-bold text-warning">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Low Stock Alert
+                    </h5>
+
+                </div>
+
+                <div class="card-body p-0">
+
+                    {% if low_stock %}
+
+                    <div class="table-responsive">
+
+                        <table class="table table-hover mb-0">
+
+                            <thead>
+
+                                <tr>
+                                    <th>Book</th>
+                                    <th>Category</th>
+                                    <th>Stock</th>
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+                            {% for book in low_stock %}
+
+                                <tr>
+
+                                    <td class="fw-semibold">
+                                        {{ book.title }}
+                                    </td>
+
+                                    <td>
+                                        {{ book.category }}
+                                    </td>
+
+                                    <td>
+
+                                        {% if book.quantity == 0 %}
+
+                                            <span class="badge bg-danger">
+                                                Out of stock
+                                            </span>
+
+                                        {% else %}
+
+                                            <span class="badge bg-warning text-dark">
+                                                {{ book.quantity }}
+                                            </span>
+
+                                        {% endif %}
+
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                    {% else %}
+
+                    <div class="p-4 text-center text-success">
+
+                        <i class="bi bi-check-circle fs-3"></i>
+
+                        <p class="mb-0 mt-2">
+                            All books have sufficient stock.
+                        </p>
+
+                    </div>
+
+                    {% endif %}
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="col-lg-7">
+
+            <div class="card border-0 shadow-sm">
+
+                <div class="card-header bg-white border-0 pt-4">
+
+                    <h5 class="fw-bold">
+                        <i class="bi bi-clock-history me-2"></i>
+                        Recent Library Activity
+                    </h5>
+
+                </div>
+
+                <div class="card-body p-0">
+
+                    {% if recent %}
+
+                    <div class="table-responsive">
+
+                        <table class="table table-hover mb-0">
+
+                            <thead>
+
+                                <tr>
+                                    <th>Member</th>
+                                    <th>Book</th>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                </tr>
+
+                            </thead>
+
+                            <tbody>
+
+                            {% for item in recent %}
+
+                                <tr>
+
+                                    <td>
+                                        {{ item.member_name }}
+                                    </td>
+
+                                    <td class="fw-semibold">
+                                        {{ item.book_title }}
+                                    </td>
+
+                                    <td>
+                                        {{ item.borrow_date }}
+                                    </td>
+
+                                    <td>
+
+                                        {% if item.status == 'Borrowed' %}
+
+                                            <span class="badge bg-warning text-dark">
+                                                Borrowed
+                                            </span>
+
+                                        {% else %}
+
+                                            <span class="badge bg-success">
+                                                Returned
+                                            </span>
+
+                                        {% endif %}
+
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                    {% else %}
+
+                    <div class="p-4 text-center text-muted">
+                        No recent activity.
+                    </div>
+
+                    {% endif %}
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
 </div>
 
-<div class="row mt-4">
-    <div class="col-md-6">
-        <div class="table-container">
-            <h5><i class="bi bi-exclamation-triangle text-danger"></i> Low Stock</h5>
-            {% if low_stock %}
-                <ul class="list-group list-group-flush">
-                {% for book in low_stock %}
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        {{ book.title }}
-                        <span class="badge bg-danger">{{ book.quantity }} left</span>
-                    </li>
-                {% endfor %}
-                </ul>
-            {% else %}
-                <p class="text-success">✅ All books have sufficient stock</p>
-            {% endif %}
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="table-container">
-            <h5><i class="bi bi-clock-history"></i> Recent Activity</h5>
-            {% if recent %}
-                <ul class="list-group list-group-flush">
-                {% for item in recent %}
-                    <li class="list-group-item">
-                        <strong>{{ item.name }}</strong> borrowed <strong>{{ item.title }}</strong>
-                        <small class="d-block text-muted">Due: {{ item.due_date }}</small>
-                    </li>
-                {% endfor %}
-                </ul>
-            {% else %}
-                <p class="text-muted">No recent activity</p>
-            {% endif %}
-        </div>
-    </div>
-</div>
+
+<!-- CHART.JS -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+
+    // ============================================
+    // MONTHLY BORROWING CHART
+    // ============================================
+
+    const monthlyLabels = [
+        {% for item in monthly_borrowing %}
+            "{{ item.month_name }}",
+        {% endfor %}
+    ];
+
+    const monthlyData = [
+        {% for item in monthly_borrowing %}
+            {{ item.total }},
+        {% endfor %}
+    ];
+
+    new Chart(
+        document.getElementById("monthlyBorrowingChart"),
+        {
+            type: "bar",
+
+            data: {
+                labels: monthlyLabels,
+
+                datasets: [{
+                    label: "Borrowings",
+                    data: monthlyData,
+                    borderWidth: 1
+                }]
+            },
+
+            options: {
+                responsive: true,
+
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                }
+            }
+        }
+    );
+
+
+    // ============================================
+    // CATEGORY CHART
+    // ============================================
+
+    const categoryLabels = [
+        {% for item in books_by_category %}
+            "{{ item.category }}",
+        {% endfor %}
+    ];
+
+    const categoryData = [
+        {% for item in books_by_category %}
+            {{ item.total }},
+        {% endfor %}
+    ];
+
+    new Chart(
+        document.getElementById("categoryChart"),
+        {
+            type: "doughnut",
+
+            data: {
+                labels: categoryLabels,
+
+                datasets: [{
+                    data: categoryData,
+                    borderWidth: 1
+                }]
+            },
+
+            options: {
+                responsive: true,
+
+                plugins: {
+                    legend: {
+                        position: "bottom"
+                    }
+                }
+            }
+        }
+    );
+
+
+    // ============================================
+    // RETURN PERFORMANCE CHART
+    // ============================================
+
+    new Chart(
+        document.getElementById("returnChart"),
+        {
+            type: "bar",
+
+            data: {
+
+                labels: [
+                    "On-Time Returns",
+                    "Late Returns",
+                    "Currently Overdue"
+                ],
+
+                datasets: [{
+                    label: "Books",
+                    data: [
+                        {{ on_time_returns }},
+                        {{ late_returns }},
+                        {{ current_overdue }}
+                    ],
+                    borderWidth: 1
+                }]
+            },
+
+            options: {
+
+                responsive: true,
+
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                }
+            }
+        }
+    );
+
+</script>
+
 {% endblock %}

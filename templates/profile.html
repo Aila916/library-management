@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+
+{% block page_title %}My Profile{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <!-- PAGE HEADER -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+
+        <div>
+            <h4 class="mb-1">
+                <i class="bi bi-person-circle"></i>
+                My Profile
+            </h4>
+
+            <p class="text-muted mb-0">
+                View your library management account information.
+            </p>
+        </div>
+
+        <a
+            href="{{ url_for('dashboard') }}"
+            class="btn btn-outline-secondary"
+        >
+            <i class="bi bi-speedometer2"></i>
+            Dashboard
+        </a>
+
+    </div>
+
+
+    <div class="row g-4">
+
+        <!-- PROFILE CARD -->
+        <div class="col-lg-4">
+
+            <div class="card shadow-sm border-0">
+
+                <div class="card-body text-center py-5">
+
+                    <!-- PROFILE ICON -->
+                    <div
+                        class="mx-auto mb-3 rounded-circle bg-primary bg-opacity-10 d-flex align-items-center justify-content-center"
+                        style="width: 110px; height: 110px;"
+                    >
+                        <i
+                            class="bi bi-person-fill text-primary"
+                            style="font-size: 55px;"
+                        ></i>
+                    </div>
+
+
+                    <!-- USERNAME -->
+
+                    <h4 class="mb-1">
+                        {{ session.get('username', 'User') }}
+                    </h4>
+
+
+                    <!-- ROLE -->
+
+                    {% if session.get('role') == 'admin' %}
+
+                        <span class="badge bg-danger px-3 py-2">
+                            <i class="bi bi-shield-check"></i>
+                            Administrator
+                        </span>
+
+                    {% elif session.get('role') == 'librarian' %}
+
+                        <span class="badge bg-primary px-3 py-2">
+                            <i class="bi bi-book"></i>
+                            Librarian
+                        </span>
+
+                    {% else %}
+
+                        <span class="badge bg-secondary px-3 py-2">
+                            {{ session.get('role', 'User')|title }}
+                        </span>
+
+                    {% endif %}
+
+
+                    <hr class="my-4">
+
+
+                    <!-- ACCOUNT STATUS -->
+
+                    <div class="d-flex justify-content-center align-items-center gap-2">
+
+                        <span
+                            class="rounded-circle bg-success"
+                            style="width:10px;height:10px;"
+                        ></span>
+
+                        <span class="text-success fw-semibold">
+                            Account Active
+                        </span>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- ACCOUNT INFORMATION -->
+        <div class="col-lg-8">
+
+            <div class="card shadow-sm border-0">
+
+                <div class="card-header bg-white py-3">
+
+                    <h5 class="mb-0">
+                        <i class="bi bi-person-vcard text-primary"></i>
+                        Account Information
+                    </h5>
+
+                </div>
+
+
+                <div class="card-body">
+
+
+                    <!-- USERNAME -->
+
+                    <div class="row border-bottom py-3">
+
+                        <div class="col-md-4 text-muted">
+                            <i class="bi bi-person me-2"></i>
+                            Username
+                        </div>
+
+                        <div class="col-md-8 fw-semibold">
+                            {{ session.get('username', 'Not available') }}
+                        </div>
+
+                    </div>
+
+
+                    <!-- USER ID -->
+
+                    <div class="row border-bottom py-3">
+
+                        <div class="col-md-4 text-muted">
+                            <i class="bi bi-hash me-2"></i>
+                            User ID
+                        </div>
+
+                        <div class="col-md-8 fw-semibold">
+                            {{ session.get('user_id', 'Not available') }}
+                        </div>
+
+                    </div>
+
+
+                    <!-- ROLE -->
+
+                    <div class="row border-bottom py-3">
+
+                        <div class="col-md-4 text-muted">
+                            <i class="bi bi-shield-check me-2"></i>
+                            Role
+                        </div>
+
+                        <div class="col-md-8">
+
+                            {% if session.get('role') == 'admin' %}
+
+                                <span class="badge bg-danger">
+                                    Administrator
+                                </span>
+
+                            {% elif session.get('role') == 'librarian' %}
+
+                                <span class="badge bg-primary">
+                                    Librarian
+                                </span>
+
+                            {% else %}
+
+                                <span class="badge bg-secondary">
+                                    {{ session.get('role', 'User')|title }}
+                                </span>
+
+                            {% endif %}
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- STATUS -->
+
+                    <div class="row border-bottom py-3">
+
+                        <div class="col-md-4 text-muted">
+                            <i class="bi bi-check-circle me-2"></i>
+                            Account Status
+                        </div>
+
+                        <div class="col-md-8">
+
+                            <span class="badge bg-success">
+                                Active
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- SYSTEM ACCESS -->
+
+                    <div class="row py-3">
+
+                        <div class="col-md-4 text-muted">
+                            <i class="bi bi-key me-2"></i>
+                            System Access
+                        </div>
+
+                        <div class="col-md-8">
+
+                            {% if session.get('role') == 'admin' %}
+
+                                <span class="text-success fw-semibold">
+                                    Full Administrative Access
+                                </span>
+
+                            {% elif session.get('role') == 'librarian' %}
+
+                                <span class="text-primary fw-semibold">
+                                    Library Management Access
+                                </span>
+
+                            {% else %}
+
+                                <span class="text-muted">
+                                    Standard Access
+                                </span>
+
+                            {% endif %}
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- SECURITY CARD -->
+
+            <div class="card shadow-sm border-0 mt-4">
+
+                <div class="card-header bg-white py-3">
+
+                    <h5 class="mb-0">
+                        <i class="bi bi-shield-lock text-primary"></i>
+                        Account Security
+                    </h5>
+
+                </div>
+
+                <div class="card-body">
+
+                    <div class="d-flex align-items-center">
+
+                        <div
+                            class="rounded-circle bg-success bg-opacity-10 p-3 me-3"
+                        >
+                            <i class="bi bi-shield-check text-success fs-4"></i>
+                        </div>
+
+                        <div>
+
+                            <h6 class="mb-1">
+                                Account is securely logged in
+                            </h6>
+
+                            <p class="text-muted mb-0 small">
+                                You are currently authenticated in the
+                                Library Management System.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- LOGOUT -->
+
+            <div class="mt-4">
+
+                <a
+                    href="{{ url_for('logout') }}"
+                    class="btn btn-outline-danger"
+                >
+                    <i class="bi bi-box-arrow-right"></i>
+                    Logout
+                </a>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

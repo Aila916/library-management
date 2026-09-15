@@ -1,0 +1,385 @@
+```html
+{% extends "base.html" %}
+
+{% block page_title %}Fine Management{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <!-- HEADER -->
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+
+        <div>
+
+            <h4>
+                <i class="bi bi-cash-coin"></i>
+                Fine Management
+            </h4>
+
+            <p class="text-muted mb-0">
+                Manage overdue fines and payments.
+            </p>
+
+        </div>
+
+        <div>
+
+            <a
+                href="{{ url_for('overdue_books') }}"
+                class="btn btn-outline-danger"
+            >
+
+                <i class="bi bi-exclamation-triangle"></i>
+                Overdue Books
+
+            </a>
+
+            <a
+                href="{{ url_for('dashboard') }}"
+                class="btn btn-outline-secondary"
+            >
+
+                <i class="bi bi-speedometer2"></i>
+                Dashboard
+
+            </a>
+
+        </div>
+
+    </div>
+
+
+    <!-- SUMMARY -->
+
+    <div class="row g-4 mb-4">
+
+        <div class="col-md-4">
+
+            <div class="card shadow-sm border-danger">
+
+                <div class="card-body">
+
+                    <h6 class="text-muted">
+                        CURRENT UNPAID FINES
+                    </h6>
+
+                    <h2 class="text-danger">
+                        KSh {{ total_unpaid }}
+                    </h2>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="col-md-4">
+
+            <div class="card shadow-sm">
+
+                <div class="card-body">
+
+                    <h6 class="text-muted">
+                        OVERDUE RECORDS
+                    </h6>
+
+                    <h2>
+                        {{ overdue_records|length }}
+                    </h2>
+
+                    <p class="text-muted mb-0">
+                        Books currently attracting fines
+                    </p>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="col-md-4">
+
+            <div class="card shadow-sm">
+
+                <div class="card-body">
+
+                    <h6 class="text-muted">
+                        FINE RATE
+                    </h6>
+
+                    <h2>
+                        KSh 10
+                    </h2>
+
+                    <p class="text-muted mb-0">
+                        Per overdue day
+                    </p>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- UNPAID FINES -->
+
+    <div class="card shadow-sm mb-4">
+
+        <div class="card-header bg-danger text-white">
+
+            <strong>
+                <i class="bi bi-exclamation-circle"></i>
+                Current Unpaid Fines
+            </strong>
+
+        </div>
+
+        <div class="card-body">
+
+            {% if overdue_records %}
+
+            <div class="table-responsive">
+
+                <table class="table table-hover align-middle">
+
+                    <thead class="table-dark">
+
+                        <tr>
+
+                            <th>#</th>
+                            <th>Member</th>
+                            <th>Email</th>
+                            <th>Book</th>
+                            <th>Due Date</th>
+                            <th>Days Overdue</th>
+                            <th>Fine</th>
+                            <th>Action</th>
+
+                        </tr>
+
+                    </thead>
+
+                    <tbody>
+
+                        {% for record in overdue_records %}
+
+                        <tr>
+
+                            <td>
+                                {{ loop.index }}
+                            </td>
+
+                            <td>
+                                <strong>
+                                    {{ record.fullname }}
+                                </strong>
+                            </td>
+
+                            <td>
+                                {{ record.email }}
+                            </td>
+
+                            <td>
+                                <strong>
+                                    {{ record.title }}
+                                </strong>
+                            </td>
+
+                            <td>
+                                {{ record.due_date }}
+                            </td>
+
+                            <td>
+
+                                <span class="badge bg-danger">
+
+                                    {{ record.days_overdue }}
+
+                                    day{% if record.days_overdue != 1 %}s{% endif %}
+
+                                </span>
+
+                            </td>
+
+                            <td>
+
+                                <strong class="text-danger">
+
+                                    KSh {{ record.fine }}
+
+                                </strong>
+
+                            </td>
+
+                            <td>
+
+                                <a
+                                    href="{{ url_for('pay_fine', record_id=record.borrow_record_id) }}"
+                                    class="btn btn-sm btn-success"
+                                    onclick="return confirm('Mark this fine as paid?');"
+                                >
+
+                                    <i class="bi bi-check-circle"></i>
+                                    Mark Paid
+
+                                </a>
+
+                            </td>
+
+                        </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+            {% else %}
+
+            <div class="text-center py-5">
+
+                <i
+                    class="bi bi-check-circle text-success"
+                    style="font-size: 60px;"
+                ></i>
+
+                <h5 class="mt-3">
+                    No Unpaid Fines
+                </h5>
+
+                <p class="text-muted">
+                    There are currently no overdue fines.
+                </p>
+
+            </div>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+
+    <!-- PAID FINES -->
+
+    <div class="card shadow-sm">
+
+        <div class="card-header bg-success text-white">
+
+            <strong>
+                <i class="bi bi-check-circle"></i>
+                Paid Fines
+            </strong>
+
+        </div>
+
+        <div class="card-body">
+
+            {% if paid_fines %}
+
+            <div class="table-responsive">
+
+                <table class="table table-hover align-middle">
+
+                    <thead class="table-dark">
+
+                        <tr>
+
+                            <th>#</th>
+                            <th>Member</th>
+                            <th>Email</th>
+                            <th>Book</th>
+                            <th>Amount</th>
+                            <th>Paid Date</th>
+                            <th>Status</th>
+
+                        </tr>
+
+                    </thead>
+
+                    <tbody>
+
+                        {% for fine in paid_fines %}
+
+                        <tr>
+
+                            <td>
+                                {{ loop.index }}
+                            </td>
+
+                            <td>
+                                <strong>
+                                    {{ fine.fullname }}
+                                </strong>
+                            </td>
+
+                            <td>
+                                {{ fine.email }}
+                            </td>
+
+                            <td>
+                                {{ fine.title }}
+                            </td>
+
+                            <td>
+
+                                <strong>
+                                    KSh {{ fine.amount }}
+                                </strong>
+
+                            </td>
+
+                            <td>
+                                {{ fine.paid_date }}
+                            </td>
+
+                            <td>
+
+                                <span class="badge bg-success">
+
+                                    <i class="bi bi-check-circle"></i>
+                                    Paid
+
+                                </span>
+
+                            </td>
+
+                        </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+            {% else %}
+
+            <div class="text-center py-4">
+
+                <p class="text-muted mb-0">
+                    No paid fines recorded yet.
+                </p>
+
+            </div>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}
+```

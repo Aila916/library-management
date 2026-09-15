@@ -1,68 +1,122 @@
+```html
 {% extends "base.html" %}
 
 {% block page_title %}Members{% endblock %}
 
 {% block content %}
+
 <div class="table-container">
+
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5><i class="bi bi-people"></i> Library Members</h5>
-        <a href="{{ url_for('add_member') }}" class="btn btn-primary btn-sm">
-            <i class="bi bi-person-plus"></i> Add Member
+
+        <h5>
+            <i class="bi bi-people"></i> Library Members
+        </h5>
+
+        <a href="{{ url_for('add_member') }}"
+           class="btn btn-primary btn-sm">
+
+            <i class="bi bi-person-plus"></i>
+            Add Member
+
         </a>
+
     </div>
-    
+
+
     <div class="table-responsive">
+
         <table class="table table-hover">
+
             <thead>
                 <tr>
                     <th>#</th>
-                    <th>Name</th>
+                    <th>Full Name</th>
                     <th>Email</th>
                     <th>Phone</th>
-                    <th>Join Date</th>
-                    <th>Status</th>
                     <th>Actions</th>
                 </tr>
             </thead>
+
+
             <tbody>
+
                 {% for member in members %}
+
                 <tr>
+
                     <td>{{ loop.index }}</td>
-                    <td><strong>{{ member.name }}</strong></td>
-                    <td>{{ member.email }}</td>
-                    <td>{{ member.phone or '-' }}</td>
-                    <td>{{ member.join_date }}</td>
+
                     <td>
-                        {% if member.status == 'active' %}
-                            <span class="badge bg-success">Active</span>
-                        {% else %}
-                            <span class="badge bg-danger">Inactive</span>
-                        {% endif %}
+                        <strong>{{ member.fullname }}</strong>
                     </td>
+
                     <td>
-                        <a href="{{ url_for('edit_member', id=member.id) }}" class="btn btn-sm btn-outline-primary">
+                        {{ member.email or '-' }}
+                    </td>
+
+                    <td>
+                        {{ member.phone or '-' }}
+                    </td>
+
+                    <td>
+
+                        <!-- EDIT MEMBER -->
+                        <a href="{{ url_for('edit_member', member_id=member.id) }}"
+                           class="btn btn-sm btn-outline-primary"
+                           title="Edit Member">
+
                             <i class="bi bi-pencil"></i>
+
                         </a>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteMember({{ member.id }})">
-                            <i class="bi bi-trash"></i>
-                        </button>
+
+
+                        <!-- DELETE MEMBER -->
+                        <form method="POST"
+                              action="{{ url_for('delete_member', member_id=member.id) }}"
+                              style="display:inline;"
+                              onsubmit="return confirm('Are you sure you want to delete this member?');">
+
+                            <button type="submit"
+                                    class="btn btn-sm btn-outline-danger"
+                                    title="Delete Member">
+
+                                <i class="bi bi-trash"></i>
+
+                            </button>
+
+                        </form>
+
                     </td>
+
                 </tr>
+
+                {% else %}
+
+                <tr>
+
+                    <td colspan="5"
+                        class="text-center text-muted py-4">
+
+                        <i class="bi bi-people fs-2"></i>
+
+                        <p class="mt-2 mb-0">
+                            No members registered yet.
+                        </p>
+
+                    </td>
+
+                </tr>
+
                 {% endfor %}
+
             </tbody>
+
         </table>
+
     </div>
+
 </div>
 
-<script>
-function deleteMember(id) {
-    if(confirm('Delete this member?')) {
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '/delete_member/' + id;
-        document.body.appendChild(form);
-        form.submit();
-    }
-}
-</script>
 {% endblock %}
+```

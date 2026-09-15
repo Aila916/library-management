@@ -1,654 +1,1528 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash
-from datetime import date, timedelta, datetime
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from functools import wraps
-import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
-import traceback
+import mysql.connector
+from datetime import date, datetime
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-change-this-in-production'
 
-# ---------------------------
+# =========================================================
+# FLASK SECRET KEY
+# =========================================================
+app.secret_key = "library_management_secret_key_2026"
+
+# Make sessions last for the browser session
+app.config["SESSION_PERMANENT"] = True
+
+
+# =========================================================
 # DATABASE CONNECTION
-# ---------------------------
+# =========================================================
 def get_db_connection():
-    print("📊 Connecting to PostgreSQL...")
-    conn = psycopg2.connect(
-        host='dpg-d8p62cj6sc1c73cdt590-a.virginia-postgres.render.com',
-        user='libraryuser',
-        password='AaCrgEda9PjShZEWZq6dAJl6Un0m28ZB',
-        database='library_yiqs',
-        port=5432
+    return mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="password",
+        database="library_management"
     )
-    return conn
 
-# ---------------------------
-# LOGIN DECORATOR
-# ---------------------------
+
+# =========================================================
+# LOGIN REQUIRED
+# =========================================================
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            flash('Please login first!', 'warning')
-            return redirect(url_for('login'))
+
+        if not session.get("user_id"):
+            return redirect(url_for("login"))
+
         return f(*args, **kwargs)
+
     return decorated_function
 
-# ---------------------------
-# INITIALIZE DATABASE TABLES
-# ---------------------------
-def init_database():
+
+# =========================================================
+# HOME
+# =========================================================
+@app.route("/")
+@login_required
+def home():
+    return redirect(url_for("dashboard"))
+
+
+# =========================================================
+# DASHBOARD
+# =========================================================
+@app.route("/dashboard")
+@login_required
+def dashboard():
+
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
+
+    # -----------------------------
+    # MAIN STATISTICS
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT COUNT(*) AS total
+        FROM books
+    """)
+    total_books = cursor.fetchone()["total"]
+
+    cursor.execute("""
+        SELECT COALESCE(SUM(quantity), 0) AS total
+        FROM books
+    """)
+    available = cursor.fetchone()["total"]
+
+    cursor.execute("""
+        SELECT COUNT(*) AS total
+        FROM borrow_records
+        WHERE status = 'Borrowed'
+    """)
+    borrowed = cursor.fetchone()["total"]
+
+    cursor.execute("""
+        SELECT COUNT(*) AS total
+        FROM members
+    """)
+    total_members = cursor.fetchone()["total"]
+
+    cursor.execute("""
+        SELECT COUNT(*) AS total
+        FROM borrow_records
+        WHERE status = 'Borrowed'
+        AND due_date < CURDATE()
+    """)
+    overdue = cursor.fetchone()["total"]
+
+    # -----------------------------
+    # LOW STOCK
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT *
+        FROM books
+        WHERE quantity <= 2
+        ORDER BY quantity ASC
+    """)
+
+    low_stock_books = cursor.fetchall()
+    low_stock_count = len(low_stock_books)
+
+    # -----------------------------
+    # FINES
+    # -----------------------------
+
+    total_fine = 0
+
     try:
-        print("📊 Creating tables...")
-        
-        # Create users table
+
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(50) UNIQUE NOT NULL,
-                password VARCHAR(255) NOT NULL,
-                email VARCHAR(100),
-                role VARCHAR(20) DEFAULT 'librarian'
-            )
+            SELECT COALESCE(SUM(amount), 0) AS total
+            FROM fines
+            WHERE status = 'Unpaid'
         """)
-        
-        # Create books table
+
+        result = cursor.fetchone()
+
+        if result:
+            total_fine = result["total"]
+
+    except mysql.connector.Error:
+
+        total_fine = 0
+
+    # -----------------------------
+    # RECENT ACTIVITY
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT
+            br.id,
+            br.borrow_date,
+            br.due_date,
+            br.return_date,
+            br.status,
+            m.fullname AS member_name,
+            b.title AS book_title
+        FROM borrow_records br
+        JOIN members m
+            ON br.member_id = m.id
+        JOIN books b
+            ON br.book_id = b.id
+        ORDER BY br.id DESC
+        LIMIT 8
+    """)
+
+    recent_activity = cursor.fetchall()
+
+    # -----------------------------
+    # MONTHLY BORROWING
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT
+            MONTH(borrow_date) AS month_number,
+            MONTHNAME(borrow_date) AS month_name,
+            COUNT(*) AS total
+        FROM borrow_records
+        WHERE YEAR(borrow_date) = YEAR(CURDATE())
+        GROUP BY
+            MONTH(borrow_date),
+            MONTHNAME(borrow_date)
+        ORDER BY MONTH(borrow_date)
+    """)
+
+    monthly_borrowing = cursor.fetchall()
+
+    # -----------------------------
+    # BOOKS BY CATEGORY
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT
+            category,
+            COUNT(*) AS total
+        FROM books
+        GROUP BY category
+        ORDER BY total DESC
+    """)
+
+    books_by_category = cursor.fetchall()
+
+    # -----------------------------
+    # MOST BORROWED BOOKS
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT
+            b.title,
+            b.author,
+            COUNT(br.id) AS borrow_count
+        FROM books b
+        LEFT JOIN borrow_records br
+            ON b.id = br.book_id
+        GROUP BY
+            b.id,
+            b.title,
+            b.author
+        ORDER BY borrow_count DESC
+        LIMIT 5
+    """)
+
+    most_borrowed = cursor.fetchall()
+
+    # -----------------------------
+    # MOST ACTIVE MEMBERS
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT
+            m.fullname,
+            COUNT(br.id) AS borrow_count
+        FROM members m
+        LEFT JOIN borrow_records br
+            ON m.id = br.member_id
+        GROUP BY
+            m.id,
+            m.fullname
+        ORDER BY borrow_count DESC
+        LIMIT 5
+    """)
+
+    most_active_members = cursor.fetchall()
+
+    # -----------------------------
+    # RETURN STATISTICS
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT COUNT(*) AS total
+        FROM borrow_records
+        WHERE return_date IS NOT NULL
+    """)
+
+    returned_count = cursor.fetchone()["total"]
+
+    cursor.execute("""
+        SELECT COUNT(*) AS total
+        FROM borrow_records
+        WHERE return_date IS NOT NULL
+        AND return_date <= due_date
+    """)
+
+    on_time_returns = cursor.fetchone()["total"]
+
+    cursor.execute("""
+        SELECT COUNT(*) AS total
+        FROM borrow_records
+        WHERE return_date IS NOT NULL
+        AND return_date > due_date
+    """)
+
+    late_returns = cursor.fetchone()["total"]
+
+    current_overdue = overdue
+
+    # -----------------------------
+    # AVERAGE LATE DAYS
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT
+            COALESCE(
+                AVG(DATEDIFF(return_date, due_date)),
+                0
+            ) AS average_days
+        FROM borrow_records
+        WHERE return_date IS NOT NULL
+        AND return_date > due_date
+    """)
+
+    average_result = cursor.fetchone()
+
+    avg_late_days = round(
+        float(average_result["average_days"] or 0),
+        1
+    )
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "dashboard.html",
+
+        total_books=total_books,
+        available=available,
+        borrowed=borrowed,
+        total_members=total_members,
+        overdue=overdue,
+        total_fine=total_fine,
+        low_stock_count=low_stock_count,
+
+        low_stock_books=low_stock_books,
+        recent_activity=recent_activity,
+        most_active_members=most_active_members,
+
+        # Dashboard aliases
+        low_stock=low_stock_books,
+        recent=recent_activity,
+        active_members=most_active_members,
+
+        monthly_borrowing=monthly_borrowing,
+        books_by_category=books_by_category,
+        most_borrowed=most_borrowed,
+
+        returned_count=returned_count,
+        on_time_returns=on_time_returns,
+        late_returns=late_returns,
+        current_overdue=current_overdue,
+        avg_late_days=avg_late_days
+    )
+
+
+# =========================================================
+# LOGIN
+# =========================================================
+@app.route("/login", methods=["GET", "POST"])
+def login():
+
+    if request.method == "POST":
+
+        username = request.form.get(
+            "username",
+            ""
+        ).strip()
+
+        password = request.form.get(
+            "password",
+            ""
+        ).strip()
+
+        if not username or not password:
+
+            flash(
+                "Please enter your username and password.",
+                "danger"
+            )
+
+            return render_template("login.html")
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        try:
+
+            cursor.execute("""
+                SELECT
+                    id,
+                    username,
+                    password,
+                    role
+                FROM users
+                WHERE username = %s
+                LIMIT 1
+            """, (username,))
+
+            user = cursor.fetchone()
+
+            if user and str(user["password"]) == password:
+
+                # Remove any old session
+                session.clear()
+
+                # Create new session
+                session["user_id"] = user["id"]
+                session["username"] = user["username"]
+                session["role"] = user["role"]
+
+                session.permanent = True
+
+                flash(
+                    "Login successful.",
+                    "success"
+                )
+
+                return redirect(
+                    url_for("dashboard")
+                )
+
+            else:
+
+                flash(
+                    "Invalid username or password.",
+                    "danger"
+                )
+
+        except mysql.connector.Error as e:
+
+            flash(
+                f"Database error: {e}",
+                "danger"
+            )
+
+        finally:
+
+            cursor.close()
+            conn.close()
+
+    return render_template("login.html")
+
+
+# =========================================================
+# LOGOUT
+# =========================================================
+@app.route("/logout")
+def logout():
+
+    session.clear()
+
+    flash(
+        "You have been logged out.",
+        "success"
+    )
+
+    return redirect(
+        url_for("login")
+    )
+
+
+# =========================================================
+# BOOKS
+# =========================================================
+@app.route("/books")
+@login_required
+def books():
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT *
+        FROM books
+        ORDER BY id DESC
+    """)
+
+    books_list = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "books.html",
+        books=books_list
+    )
+
+
+# =========================================================
+# ADD BOOK
+# =========================================================
+@app.route("/books/add", methods=["GET", "POST"])
+@login_required
+def add_book():
+
+    if request.method == "POST":
+
+        title = request.form.get("title", "").strip()
+        author = request.form.get("author", "").strip()
+        isbn = request.form.get("isbn", "").strip()
+        category = request.form.get("category", "").strip()
+        quantity = request.form.get("quantity", 0)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+
+            cursor.execute("""
+                INSERT INTO books
+                (
+                    title,
+                    author,
+                    isbn,
+                    category,
+                    quantity
+                )
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                title,
+                author,
+                isbn,
+                category,
+                quantity
+            ))
+
+            conn.commit()
+
+            flash(
+                "Book added successfully.",
+                "success"
+            )
+
+        except mysql.connector.Error as e:
+
+            conn.rollback()
+
+            flash(
+                f"Error adding book: {e}",
+                "danger"
+            )
+
+        finally:
+
+            cursor.close()
+            conn.close()
+
+        return redirect(
+            url_for("books")
+        )
+
+    return render_template(
+        "add_book.html"
+    )
+
+
+# =========================================================
+# EDIT BOOK
+# =========================================================
+@app.route(
+    "/books/edit/<int:book_id>",
+    methods=["GET", "POST"]
+)
+@login_required
+def edit_book(book_id):
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    if request.method == "POST":
+
+        title = request.form.get("title", "").strip()
+        author = request.form.get("author", "").strip()
+        isbn = request.form.get("isbn", "").strip()
+        category = request.form.get("category", "").strip()
+        quantity = request.form.get("quantity", 0)
+
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS books (
-                id SERIAL PRIMARY KEY,
-                title VARCHAR(255) NOT NULL,
-                author VARCHAR(255) NOT NULL,
-                quantity INT DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Create members table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS members (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(100) NOT NULL,
-                email VARCHAR(100) UNIQUE NOT NULL,
-                phone VARCHAR(20),
-                join_date DATE DEFAULT CURRENT_DATE,
-                status VARCHAR(20) DEFAULT 'active'
-            )
-        """)
-        
-        # Create borrow_records table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS borrow_records (
-                id SERIAL PRIMARY KEY,
-                book_id INT NOT NULL,
-                member_id INT NOT NULL,
-                borrow_date DATE NOT NULL,
-                due_date DATE NOT NULL,
-                return_date DATE,
-                status VARCHAR(20) DEFAULT 'borrowed'
-            )
-        """)
-        
-        # Insert default admin
-        cursor.execute("SELECT * FROM users WHERE username = 'admin'")
-        if not cursor.fetchone():
-            cursor.execute(
-                "INSERT INTO users (username, password, email, role) VALUES (%s, %s, %s, %s)",
-                ('admin', 'admin123', 'admin@library.com', 'admin')
-            )
-            print("✅ Admin user created!")
-        
-        # Insert sample books
-        cursor.execute("SELECT COUNT(*) FROM books")
-        if cursor.fetchone()[0] == 0:
-            books = [
-                ("The Great Gatsby", "F. Scott Fitzgerald", 5),
-                ("To Kill a Mockingbird", "Harper Lee", 3),
-                ("1984", "George Orwell", 4),
-                ("Pride and Prejudice", "Jane Austen", 2),
-                ("The Catcher in the Rye", "J.D. Salinger", 1)
-            ]
-            cursor.executemany(
-                "INSERT INTO books (title, author, quantity) VALUES (%s, %s, %s)",
-                books
-            )
-            print("✅ Sample books added!")
-        
-        # Insert sample members
-        cursor.execute("SELECT COUNT(*) FROM members")
-        if cursor.fetchone()[0] == 0:
-            members = [
-                ("John Doe", "john@example.com", "1234567890"),
-                ("Jane Smith", "jane@example.com", "0987654321"),
-                ("Bob Johnson", "bob@example.com", "5555555555")
-            ]
-            cursor.executemany(
-                "INSERT INTO members (name, email, phone, status) VALUES (%s, %s, %s, 'active')",
-                members
-            )
-            print("✅ Sample members added!")
-        
+            UPDATE books
+            SET
+                title = %s,
+                author = %s,
+                isbn = %s,
+                category = %s,
+                quantity = %s
+            WHERE id = %s
+        """, (
+            title,
+            author,
+            isbn,
+            category,
+            quantity,
+            book_id
+        ))
+
         conn.commit()
-        print("✅ Database initialized successfully!")
-    except Exception as e:
-        print(f"❌ Database error: {e}")
-        print(traceback.format_exc())
-        conn.rollback()
-    finally:
+
         cursor.close()
         conn.close()
 
-# Initialize database
-print("🚀 Initializing database...")
-init_database()
+        flash(
+            "Book updated successfully.",
+            "success"
+        )
 
-# ---------------------------
-# ROUTES
-# ---------------------------
+        return redirect(
+            url_for("books")
+        )
 
-@app.route('/')
-def home():
-    if 'user_id' in session:
-        return redirect(url_for('dashboard'))
-    return redirect(url_for('login'))
+    cursor.execute("""
+        SELECT *
+        FROM books
+        WHERE id = %s
+    """, (book_id,))
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        print(f"🔐 Login attempt: {username}")
-        
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, password))
-            user = cursor.fetchone()
-            conn.close()
-            
-            if user:
-                session['user_id'] = user['id']
-                session['username'] = user['username']
-                flash(f'Welcome back, {username}!', 'success')
-                print(f"✅ Login successful: {username}")
-                return redirect(url_for('dashboard'))
-            else:
-                flash('Invalid credentials!', 'error')
-                print(f"❌ Login failed: {username}")
-        except Exception as e:
-            print(f"❌ Login error: {e}")
-            print(traceback.format_exc())
-            flash('An error occurred. Please try again.', 'error')
-    
-    return render_template('login.html')
+    book = cursor.fetchone()
 
-@app.route('/logout')
-def logout():
-    session.clear()
-    flash('Logged out!', 'info')
-    return redirect(url_for('login'))
+    cursor.close()
+    conn.close()
 
-@app.route('/dashboard')
+    return render_template(
+        "edit_book.html",
+        book=book
+    )
+
+
+# =========================================================
+# DELETE BOOK
+# =========================================================
+@app.route("/books/delete/<int:book_id>")
 @login_required
-def dashboard():
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    
-    try:
-        cursor.execute("SELECT COUNT(*) as total FROM books")
-        total_books = cursor.fetchone()['total']
-        
-        cursor.execute("SELECT COUNT(*) as total FROM books WHERE quantity > 0")
-        available = cursor.fetchone()['total']
-        
-        cursor.execute("SELECT COUNT(*) as total FROM borrow_records WHERE status = 'borrowed'")
-        borrowed = cursor.fetchone()['total']
-        
-        cursor.execute("SELECT COUNT(*) as total FROM borrow_records WHERE status = 'overdue'")
-        overdue = cursor.fetchone()['total']
-        
-        cursor.execute("SELECT * FROM books WHERE quantity <= 2 ORDER BY quantity")
-        low_stock = cursor.fetchall()
-        
-        cursor.execute("""
-            SELECT b.title, m.name, br.borrow_date, br.due_date 
-            FROM borrow_records br
-            JOIN books b ON br.book_id = b.id
-            JOIN members m ON br.member_id = m.id
-            WHERE br.status = 'borrowed'
-            ORDER BY br.borrow_date DESC LIMIT 5
-        """)
-        recent = cursor.fetchall()
-        
-    except Exception as e:
-        print(f"❌ Dashboard error: {e}")
-        print(traceback.format_exc())
-        total_books = 0
-        available = 0
-        borrowed = 0
-        overdue = 0
-        low_stock = []
-        recent = []
-    finally:
-        conn.close()
-    
-    return render_template('dashboard.html', 
-                         total_books=total_books, 
-                         available=available, 
-                         borrowed=borrowed,
-                         overdue=overdue,
-                         low_stock=low_stock,
-                         recent=recent)
+def delete_book(book_id):
 
-@app.route('/books')
-@login_required
-def books():
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    try:
-        cursor.execute("SELECT * FROM books ORDER BY title")
-        books = cursor.fetchall()
-    except Exception as e:
-        print(f"❌ Books error: {e}")
-        print(traceback.format_exc())
-        books = []
-    finally:
-        conn.close()
-    return render_template('books.html', books=books)
-
-@app.route('/add_book', methods=['GET', 'POST'])
-@login_required
-def add_book():
-    if request.method == 'POST':
-        title = request.form['title']
-        author = request.form['author']
-        quantity = int(request.form['quantity'])
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute("INSERT INTO books (title, author, quantity) VALUES (%s, %s, %s)", (title, author, quantity))
-            conn.commit()
-            flash(f'✅ "{title}" added successfully!', 'success')
-        except Exception as e:
-            print(f"❌ Add book error: {e}")
-            print(traceback.format_exc())
-            flash('Error adding book!', 'error')
-        finally:
-            conn.close()
-        return redirect(url_for('books'))
-    return render_template('add_book.html')
-
-@app.route('/edit_book/<int:id>', methods=['GET', 'POST'])
-@login_required
-def edit_book(id):
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    
-    if request.method == 'POST':
-        title = request.form['title']
-        author = request.form['author']
-        quantity = int(request.form['quantity'])
-        try:
-            cursor.execute("UPDATE books SET title=%s, author=%s, quantity=%s WHERE id=%s", (title, author, quantity, id))
-            conn.commit()
-            flash('✅ Book updated!', 'success')
-        except Exception as e:
-            print(f"❌ Edit book error: {e}")
-            print(traceback.format_exc())
-            flash('Error updating book!', 'error')
-        finally:
-            conn.close()
-        return redirect(url_for('books'))
-    
-    try:
-        cursor.execute("SELECT * FROM books WHERE id=%s", (id,))
-        book = cursor.fetchone()
-    except Exception as e:
-        print(f"❌ Get book error: {e}")
-        print(traceback.format_exc())
-        book = None
-    finally:
-        conn.close()
-    
-    if not book:
-        flash('Book not found!', 'error')
-        return redirect(url_for('books'))
-    return render_template('edit_book.html', book=book)
-
-@app.route('/delete_book/<int:id>', methods=['POST'])
-@login_required
-def delete_book(id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    try:
-        cursor.execute("DELETE FROM books WHERE id=%s", (id,))
-        conn.commit()
-        flash('🗑️ Book deleted!', 'info')
-    except Exception as e:
-        print(f"❌ Delete book error: {e}")
-        print(traceback.format_exc())
-        flash('Error deleting book!', 'error')
-    finally:
-        conn.close()
-    return redirect(url_for('books'))
 
-# ---------------------------
-# BORROW BOOK FUNCTIONALITY
-# ---------------------------
-@app.route('/borrow_book', methods=['GET', 'POST'])
-@login_required
-def borrow_book():
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    
-    if request.method == 'POST':
-        try:
-            book_id = request.form['book_id']
-            member_id = request.form['member_id']
-            due_date = request.form.get('due_date')
-            
-            # Check if book exists and is available
-            cursor.execute("SELECT * FROM books WHERE id=%s", (book_id,))
-            book = cursor.fetchone()
-            if not book:
-                flash('❌ Book not found!', 'error')
-                return redirect(url_for('borrow_book'))
-            
-            if book['quantity'] <= 0:
-                flash(f'❌ Book "{book["title"]}" is not available!', 'error')
-                return redirect(url_for('borrow_book'))
-            
-            # Check if member exists
-            cursor.execute("SELECT * FROM members WHERE id=%s AND status='active'", (member_id,))
-            member = cursor.fetchone()
-            if not member:
-                flash('❌ Member not found or inactive!', 'error')
-                return redirect(url_for('borrow_book'))
-            
-            # Check if already borrowed
-            cursor.execute("""
-                SELECT * FROM borrow_records 
-                WHERE book_id=%s AND member_id=%s AND status='borrowed'
-            """, (book_id, member_id))
-            existing = cursor.fetchone()
-            if existing:
-                flash(f'⚠️ {member["name"]} already borrowed this book!', 'warning')
-                return redirect(url_for('borrow_book'))
-            
-            # Process borrow
-            borrow_date = date.today()
-            if due_date:
-                due_date = datetime.strptime(due_date, '%Y-%m-%d').date()
-            else:
-                due_date = borrow_date + timedelta(days=14)
-            
-            # Update book quantity
-            cursor.execute("UPDATE books SET quantity = quantity - 1 WHERE id=%s", (book_id,))
-            
-            # Create borrow record
-            cursor.execute("""
-                INSERT INTO borrow_records (book_id, member_id, borrow_date, due_date, status)
-                VALUES (%s, %s, %s, %s, 'borrowed')
-            """, (book_id, member_id, borrow_date, due_date))
-            
-            conn.commit()
-            flash(f'✅ "{book["title"]}" borrowed by {member["name"]}!', 'success')
-            
-        except Exception as e:
-            print(f"❌ Borrow error: {e}")
-            print(traceback.format_exc())
-            flash('Error borrowing book!', 'error')
-            conn.rollback()
-        finally:
-            conn.close()
-        return redirect(url_for('borrowed'))
-    
-    # GET request - show form
     try:
-        cursor.execute("SELECT * FROM books WHERE quantity > 0 ORDER BY title")
-        books = cursor.fetchall()
-        
-        cursor.execute("SELECT * FROM members WHERE status='active' ORDER BY name")
-        members = cursor.fetchall()
-        
-        cursor.execute("""
-            SELECT br.*, b.title as book_title, m.name as member_name
-            FROM borrow_records br
-            JOIN books b ON br.book_id = b.id
-            JOIN members m ON br.member_id = m.id
-            WHERE br.status IN ('borrowed', 'overdue')
-            ORDER BY br.borrow_date DESC
-            LIMIT 10
-        """)
-        current_borrows = cursor.fetchall()
-        
-    except Exception as e:
-        print(f"❌ Borrow form error: {e}")
-        print(traceback.format_exc())
-        books = []
-        members = []
-        current_borrows = []
-    finally:
-        conn.close()
-    
-    return render_template('borrow_book.html',
-                         books=books,
-                         members=members,
-                         current_borrows=current_borrows,
-                         today=date.today(),
-                         default_due=date.today() + timedelta(days=14))
 
-# ---------------------------
-# BORROWED BOOKS VIEW - FIXED
-# ---------------------------
-@app.route('/borrowed')
-@login_required
-def borrowed():
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    records = []
-    
-    try:
-        print("📊 Fetching borrowed records...")
-        
-        # Update overdue status
         cursor.execute("""
-            UPDATE borrow_records 
-            SET status='overdue' 
-            WHERE status='borrowed' AND due_date < CURRENT_DATE
-        """)
-        conn.commit()
-        print("✅ Overdue status updated")
-        
-        # Get all borrow records with details - SIMPLIFIED QUERY
-        cursor.execute("""
-            SELECT 
-                br.id,
-                br.book_id,
-                br.member_id,
-                br.borrow_date,
-                br.due_date,
-                br.return_date,
-                br.status,
-                b.title as book_title,
-                b.author as book_author,
-                m.name as member_name,
-                m.email as member_email
-            FROM borrow_records br
-            LEFT JOIN books b ON br.book_id = b.id
-            LEFT JOIN members m ON br.member_id = m.id
-            ORDER BY br.borrow_date DESC
-        """)
-        records = cursor.fetchall()
-        print(f"✅ Found {len(records)} records")
-        
-    except Exception as e:
-        print(f"❌ Borrowed page error: {e}")
-        print(traceback.format_exc())
-        flash('Error loading borrowed books. Please check logs.', 'error')
-        records = []
-    finally:
-        conn.close()
-    
-    return render_template('borrowed.html', records=records)
+            DELETE FROM books
+            WHERE id = %s
+        """, (book_id,))
 
-# ---------------------------
-# RETURN BOOK FUNCTIONALITY
-# ---------------------------
-@app.route('/return_book/<int:id>', methods=['POST'])
-@login_required
-def return_book(id):
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    
-    try:
-        print(f"📊 Returning book record ID: {id}")
-        
-        # Get the borrow record
-        cursor.execute("SELECT * FROM borrow_records WHERE id=%s", (id,))
-        record = cursor.fetchone()
-        
-        if not record:
-            flash('❌ Record not found!', 'error')
-            conn.close()
-            return redirect(url_for('borrowed'))
-        
-        if record['status'] == 'returned':
-            flash('ℹ️ This book has already been returned.', 'info')
-            conn.close()
-            return redirect(url_for('borrowed'))
-        
-        # Process return
-        cursor.execute("""
-            UPDATE borrow_records 
-            SET return_date=CURRENT_DATE, status='returned' 
-            WHERE id=%s
-        """, (id,))
-        
-        # Increase book quantity
-        cursor.execute("UPDATE books SET quantity = quantity + 1 WHERE id=%s", (record['book_id'],))
-        
         conn.commit()
-        flash('✅ Book returned successfully!', 'success')
-        print(f"✅ Book returned: ID {id}")
-        
-    except Exception as e:
-        print(f"❌ Return error: {e}")
-        print(traceback.format_exc())
-        flash('Error returning book!', 'error')
+
+        flash(
+            "Book deleted successfully.",
+            "success"
+        )
+
+    except mysql.connector.Error as e:
+
         conn.rollback()
-    finally:
-        conn.close()
-    
-    return redirect(url_for('borrowed'))
 
-# ---------------------------
-# MEMBERS MANAGEMENT
-# ---------------------------
-@app.route('/members')
+        flash(
+            f"Cannot delete this book: {e}",
+            "danger"
+        )
+
+    finally:
+
+        cursor.close()
+        conn.close()
+
+    return redirect(
+        url_for("books")
+    )
+
+
+# =========================================================
+# MEMBERS
+# =========================================================
+@app.route("/members")
 @login_required
 def members():
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    try:
-        cursor.execute("""
-            SELECT m.*, 
-            (SELECT COUNT(*) FROM borrow_records WHERE member_id = m.id AND status = 'borrowed') as active_borrows
-            FROM members m
-            ORDER BY name
-        """)
-        members = cursor.fetchall()
-    except Exception as e:
-        print(f"❌ Members error: {e}")
-        print(traceback.format_exc())
-        members = []
-    finally:
-        conn.close()
-    return render_template('members.html', members=members)
 
-@app.route('/add_member', methods=['GET', 'POST'])
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT *
+        FROM members
+        ORDER BY id DESC
+    """)
+
+    members_list = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "members.html",
+        members=members_list
+    )
+
+
+# =========================================================
+# ADD MEMBER
+# =========================================================
+@app.route(
+    "/members/add",
+    methods=["GET", "POST"]
+)
 @login_required
 def add_member():
-    if request.method == 'POST':
-        name = request.form['name']
-        email = request.form['email']
-        phone = request.form['phone']
+
+    if request.method == "POST":
+
+        fullname = request.form.get(
+            "fullname",
+            ""
+        ).strip()
+
+        email = request.form.get(
+            "email",
+            ""
+        ).strip()
+
+        phone = request.form.get(
+            "phone",
+            ""
+        ).strip()
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        try:
-            cursor.execute("INSERT INTO members (name, email, phone) VALUES (%s, %s, %s)", (name, email, phone))
-            conn.commit()
-            flash(f'✅ Member "{name}" added!', 'success')
-        except Exception as e:
-            print(f"❌ Add member error: {e}")
-            print(traceback.format_exc())
-            flash('❌ Email already exists!', 'error')
-        finally:
-            conn.close()
-        return redirect(url_for('members'))
-    return render_template('add_member.html')
 
-@app.route('/edit_member/<int:id>', methods=['GET', 'POST'])
+        try:
+
+            cursor.execute("""
+                INSERT INTO members
+                (
+                    fullname,
+                    email,
+                    phone
+                )
+                VALUES (%s, %s, %s)
+            """, (
+                fullname,
+                email,
+                phone
+            ))
+
+            conn.commit()
+
+            flash(
+                "Member added successfully.",
+                "success"
+            )
+
+        except mysql.connector.Error as e:
+
+            conn.rollback()
+
+            flash(
+                f"Error adding member: {e}",
+                "danger"
+            )
+
+        finally:
+
+            cursor.close()
+            conn.close()
+
+        return redirect(
+            url_for("members")
+        )
+
+    return render_template(
+        "add_member.html"
+    )
+
+
+# =========================================================
+# EDIT MEMBER
+# =========================================================
+@app.route(
+    "/members/edit/<int:member_id>",
+    methods=["GET", "POST"]
+)
 @login_required
-def edit_member(id):
+def edit_member(member_id):
+
     conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    
-    if request.method == 'POST':
-        name = request.form['name']
-        email = request.form['email']
-        phone = request.form['phone']
-        status = request.form['status']
-        try:
-            cursor.execute("UPDATE members SET name=%s, email=%s, phone=%s, status=%s WHERE id=%s", 
-                          (name, email, phone, status, id))
-            conn.commit()
-            flash('✅ Member updated!', 'success')
-        except Exception as e:
-            print(f"❌ Edit member error: {e}")
-            print(traceback.format_exc())
-            flash('❌ Email already exists!', 'error')
-        finally:
-            conn.close()
-        return redirect(url_for('members'))
-    
-    try:
-        cursor.execute("SELECT * FROM members WHERE id=%s", (id,))
-        member = cursor.fetchone()
-    except Exception as e:
-        print(f"❌ Get member error: {e}")
-        print(traceback.format_exc())
-        member = None
-    finally:
-        conn.close()
-    
-    if not member:
-        flash('Member not found!', 'error')
-        return redirect(url_for('members'))
-    return render_template('edit_member.html', member=member)
+    cursor = conn.cursor(dictionary=True)
 
-@app.route('/delete_member/<int:id>', methods=['POST'])
+    if request.method == "POST":
+
+        fullname = request.form.get(
+            "fullname",
+            ""
+        ).strip()
+
+        email = request.form.get(
+            "email",
+            ""
+        ).strip()
+
+        phone = request.form.get(
+            "phone",
+            ""
+        ).strip()
+
+        cursor.execute("""
+            UPDATE members
+            SET
+                fullname = %s,
+                email = %s,
+                phone = %s
+            WHERE id = %s
+        """, (
+            fullname,
+            email,
+            phone,
+            member_id
+        ))
+
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+
+        flash(
+            "Member updated successfully.",
+            "success"
+        )
+
+        return redirect(
+            url_for("members")
+        )
+
+    cursor.execute("""
+        SELECT *
+        FROM members
+        WHERE id = %s
+    """, (member_id,))
+
+    member = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "edit_member.html",
+        member=member
+    )
+
+
+# =========================================================
+# DELETE MEMBER
+# =========================================================
+@app.route(
+    "/members/delete/<int:member_id>"
+)
 @login_required
-def delete_member(id):
+def delete_member(member_id):
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    try:
-        cursor.execute("DELETE FROM members WHERE id=%s", (id,))
-        conn.commit()
-        flash('🗑️ Member deleted!', 'info')
-    except Exception as e:
-        print(f"❌ Delete member error: {e}")
-        print(traceback.format_exc())
-        flash('Error deleting member!', 'error')
-    finally:
-        conn.close()
-    return redirect(url_for('members'))
 
-# ---------------------------
-# RUN APP
-# ---------------------------
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    try:
+
+        cursor.execute("""
+            DELETE FROM members
+            WHERE id = %s
+        """, (member_id,))
+
+        conn.commit()
+
+        flash(
+            "Member deleted successfully.",
+            "success"
+        )
+
+    except mysql.connector.Error as e:
+
+        conn.rollback()
+
+        flash(
+            f"Cannot delete member: {e}",
+            "danger"
+        )
+
+    finally:
+
+        cursor.close()
+        conn.close()
+
+    return redirect(
+        url_for("members")
+    )
+
+
+# =========================================================
+# BORROW BOOK
+# =========================================================
+@app.route(
+    "/borrow",
+    methods=["GET", "POST"]
+)
+@login_required
+def borrow_book():
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    if request.method == "POST":
+
+        member_id = request.form.get(
+            "member_id"
+        )
+
+        book_id = request.form.get(
+            "book_id"
+        )
+
+        due_date = request.form.get(
+            "due_date"
+        )
+
+        try:
+
+            cursor.execute("""
+                SELECT *
+                FROM books
+                WHERE id = %s
+            """, (book_id,))
+
+            book = cursor.fetchone()
+
+            if not book:
+
+                flash(
+                    "Book not found.",
+                    "danger"
+                )
+
+            elif book["quantity"] <= 0:
+
+                flash(
+                    "This book is currently out of stock.",
+                    "danger"
+                )
+
+            else:
+
+                cursor.execute("""
+                    SELECT *
+                    FROM members
+                    WHERE id = %s
+                """, (member_id,))
+
+                member = cursor.fetchone()
+
+                if not member:
+
+                    flash(
+                        "Member not found.",
+                        "danger"
+                    )
+
+                else:
+
+                    cursor.execute("""
+                        INSERT INTO borrow_records
+                        (
+                            member_id,
+                            book_id,
+                            borrow_date,
+                            due_date,
+                            status
+                        )
+                        VALUES
+                        (
+                            %s,
+                            %s,
+                            CURDATE(),
+                            %s,
+                            'Borrowed'
+                        )
+                    """, (
+                        member_id,
+                        book_id,
+                        due_date
+                    ))
+
+                    cursor.execute("""
+                        UPDATE books
+                        SET quantity = quantity - 1
+                        WHERE id = %s
+                    """, (book_id,))
+
+                    conn.commit()
+
+                    flash(
+                        "Book borrowed successfully.",
+                        "success"
+                    )
+
+                    cursor.close()
+                    conn.close()
+
+                    return redirect(
+                        url_for("borrowed_books")
+                    )
+
+        except mysql.connector.Error as e:
+
+            conn.rollback()
+
+            flash(
+                f"Borrowing error: {e}",
+                "danger"
+            )
+
+    # Available books
+    cursor.execute("""
+        SELECT *
+        FROM books
+        WHERE quantity > 0
+        ORDER BY title
+    """)
+
+    books_list = cursor.fetchall()
+
+    # Members
+    cursor.execute("""
+        SELECT *
+        FROM members
+        ORDER BY fullname
+    """)
+
+    members_list = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "borrow_book.html",
+        books=books_list,
+        members=members_list
+    )
+
+
+# =========================================================
+# BORROWED BOOKS
+# =========================================================
+@app.route("/borrowed")
+@login_required
+def borrowed_books():
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT
+            br.*,
+            m.fullname AS member_name,
+            m.email,
+            b.title AS book_title,
+            b.author
+        FROM borrow_records br
+        JOIN members m
+            ON br.member_id = m.id
+        JOIN books b
+            ON br.book_id = b.id
+        WHERE br.status = 'Borrowed'
+        ORDER BY br.id DESC
+    """)
+
+    records = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "borrowed.html",
+        records=records
+    )
+
+
+# =========================================================
+# RETURN BOOK
+# =========================================================
+@app.route(
+    "/return/<int:record_id>"
+)
+@login_required
+def return_book(record_id):
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+
+        cursor.execute("""
+            SELECT *
+            FROM borrow_records
+            WHERE id = %s
+        """, (record_id,))
+
+        record = cursor.fetchone()
+
+        if not record:
+
+            flash(
+                "Borrow record not found.",
+                "danger"
+            )
+
+        elif record["status"] == "Returned":
+
+            flash(
+                "This book has already been returned.",
+                "warning"
+            )
+
+        else:
+
+            cursor.execute("""
+                UPDATE borrow_records
+                SET
+                    return_date = CURDATE(),
+                    status = 'Returned'
+                WHERE id = %s
+            """, (record_id,))
+
+            cursor.execute("""
+                UPDATE books
+                SET quantity = quantity + 1
+                WHERE id = %s
+            """, (record["book_id"],))
+
+            conn.commit()
+
+            flash(
+                "Book returned successfully.",
+                "success"
+            )
+
+    except mysql.connector.Error as e:
+
+        conn.rollback()
+
+        flash(
+            f"Return error: {e}",
+            "danger"
+        )
+
+    finally:
+
+        cursor.close()
+        conn.close()
+
+    return redirect(
+        url_for("borrowed_books")
+    )
+
+
+# =========================================================
+# OVERDUE BOOKS
+# =========================================================
+@app.route("/overdue")
+@login_required
+def overdue_books():
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT
+            br.*,
+            m.fullname AS member_name,
+            m.phone,
+            b.title AS book_title,
+            b.author,
+            DATEDIFF(
+                CURDATE(),
+                br.due_date
+            ) AS days_overdue
+        FROM borrow_records br
+        JOIN members m
+            ON br.member_id = m.id
+        JOIN books b
+            ON br.book_id = b.id
+        WHERE br.status = 'Borrowed'
+        AND br.due_date < CURDATE()
+        ORDER BY br.due_date ASC
+    """)
+
+    overdue_list = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "overdue.html",
+        overdue=overdue_list
+    )
+
+
+# =========================================================
+# BORROWING HISTORY
+# =========================================================
+@app.route("/borrow-history")
+@login_required
+def borrow_history():
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT
+            br.*,
+            m.fullname AS member_name,
+            b.title AS book_title,
+            b.author
+        FROM borrow_records br
+        JOIN members m
+            ON br.member_id = m.id
+        JOIN books b
+            ON br.book_id = b.id
+        ORDER BY br.id DESC
+    """)
+
+    history = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "borrow_history.html",
+        history=history
+    )
+
+
+# =========================================================
+# FINES
+# =========================================================
+@app.route("/fines")
+@login_required
+def fines():
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    unpaid_fines = []
+    paid_fines = []
+
+    try:
+
+        cursor.execute("""
+            SELECT
+                br.id,
+                br.due_date,
+                m.fullname AS member_name,
+                b.title AS book_title,
+                DATEDIFF(
+                    CURDATE(),
+                    br.due_date
+                ) AS days_overdue,
+                DATEDIFF(
+                    CURDATE(),
+                    br.due_date
+                ) * 10 AS amount
+            FROM borrow_records br
+            JOIN members m
+                ON br.member_id = m.id
+            JOIN books b
+                ON br.book_id = b.id
+            WHERE br.status = 'Borrowed'
+            AND br.due_date < CURDATE()
+            ORDER BY br.due_date ASC
+        """)
+
+        unpaid_fines = cursor.fetchall()
+
+    except mysql.connector.Error:
+
+        unpaid_fines = []
+
+    try:
+
+        cursor.execute("""
+            SELECT *
+            FROM fines
+            ORDER BY id DESC
+        """)
+
+        paid_fines = cursor.fetchall()
+
+    except mysql.connector.Error:
+
+        paid_fines = []
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "fines.html",
+        fines=unpaid_fines,
+        paid_fines=paid_fines
+    )
+
+
+# =========================================================
+# PAY FINE
+# =========================================================
+@app.route(
+    "/fines/pay/<int:record_id>"
+)
+@login_required
+def pay_fine(record_id):
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+
+        cursor.execute("""
+            SELECT
+                DATEDIFF(
+                    CURDATE(),
+                    due_date
+                ) * 10 AS amount
+            FROM borrow_records
+            WHERE id = %s
+        """, (record_id,))
+
+        result = cursor.fetchone()
+
+        if result:
+
+            amount = max(
+                result[0],
+                0
+            )
+
+            cursor.execute("""
+                INSERT INTO fines
+                (
+                    borrow_record_id,
+                    amount,
+                    status,
+                    paid_date
+                )
+                VALUES
+                (
+                    %s,
+                    %s,
+                    'Paid',
+                    CURDATE()
+                )
+            """, (
+                record_id,
+                amount
+            ))
+
+            conn.commit()
+
+            flash(
+                "Fine paid successfully.",
+                "success"
+            )
+
+    except mysql.connector.Error as e:
+
+        conn.rollback()
+
+        flash(
+            f"Fine payment error: {e}",
+            "danger"
+        )
+
+    finally:
+
+        cursor.close()
+        conn.close()
+
+    return redirect(
+        url_for("fines")
+    )
+
+
+# =========================================================
+# LOW STOCK
+# =========================================================
+@app.route("/low-stock")
+@login_required
+def low_stock():
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT *
+        FROM books
+        WHERE quantity <= 2
+        ORDER BY quantity ASC
+    """)
+
+    books_list = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "low_stock.html",
+        books=books_list
+    )
+
+
+# =========================================================
+# SEARCH
+# =========================================================
+@app.route("/search")
+@login_required
+def search():
+
+    query = request.args.get(
+        "q",
+        ""
+    ).strip()
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    if query:
+
+        search_value = f"%{query}%"
+
+        cursor.execute("""
+            SELECT *
+            FROM books
+            WHERE title LIKE %s
+               OR author LIKE %s
+               OR isbn LIKE %s
+               OR category LIKE %s
+            ORDER BY title
+        """, (
+            search_value,
+            search_value,
+            search_value,
+            search_value
+        ))
+
+    else:
+
+        cursor.execute("""
+            SELECT *
+            FROM books
+            ORDER BY title
+        """)
+
+    results = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "search.html",
+        results=results,
+        query=query
+    )
+
+
+# =========================================================
+# BOOK SUGGESTIONS
+# =========================================================
+@app.route("/book-suggestions")
+@login_required
+def book_suggestions():
+
+    query = request.args.get(
+        "q",
+        ""
+    ).strip()
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    search_value = f"%{query}%"
+
+    cursor.execute("""
+        SELECT
+            id,
+            title,
+            author,
+            isbn,
+            category
+        FROM books
+        WHERE title LIKE %s
+           OR author LIKE %s
+           OR isbn LIKE %s
+        ORDER BY title
+        LIMIT 10
+    """, (
+        search_value,
+        search_value,
+        search_value
+    ))
+
+    books_list = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify(books_list)
+
+
+# =========================================================
+# PROFILE
+# =========================================================
+@app.route("/profile")
+@login_required
+def profile():
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT *
+        FROM users
+        WHERE id = %s
+    """, (session["user_id"],))
+
+    user = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "profile.html",
+        user=user
+    )
+
+
+# =========================================================
+# ERROR HANDLERS
+# =========================================================
+@app.errorhandler(404)
+def page_not_found(error):
+    return render_template(
+        "404.html"
+    ), 404
+
+
+@app.errorhandler(500)
+def internal_server_error(error):
+    return render_template(
+        "500.html"
+    ), 500
+
+
+# =========================================================
+# RUN APPLICATION
+# =========================================================
+if __name__ == "__main__":
+    app.run(debug=True)
