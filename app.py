@@ -2,20 +2,9 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from functools import wraps
 import mysql.connector
 from datetime import date, datetime
-import os
 
 app = Flask(__name__)
-
-# =========================================================
-# FLASK SECRET KEY
-# =========================================================
-app.secret_key = os.getenv(
-    "SECRET_KEY",
-    "library_management_secret_key_2026"
-)
-
-# Make sessions last for the browser session
-app.config["SESSION_PERMANENT"] = True
+app.secret_key = "library_management_secret_key"
 
 
 # =========================================================
@@ -23,11 +12,10 @@ app.config["SESSION_PERMANENT"] = True
 # =========================================================
 def get_db_connection():
     return mysql.connector.connect(
-        host=os.getenv("DB_HOST", "localhost"),
-        port=int(os.getenv("DB_PORT", "3306")),
-        user=os.getenv("DB_USER", "root"),
-        password=os.getenv("DB_PASSWORD", "password"),
-        database=os.getenv("DB_NAME", "library_management")
+        host="localhost",
+        user="root",
+        password="password",
+        database="library_management"
     )
 
 
@@ -38,7 +26,7 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
 
-        if not session.get("user_id"):
+        if "user_id" not in session:
             return redirect(url_for("login"))
 
         return f(*args, **kwargs)
@@ -47,7 +35,7 @@ def login_required(f):
 
 
 # =========================================================
-# HOME
+# HOME / DASHBOARD
 # =========================================================
 @app.route("/")
 @login_required
@@ -55,9 +43,6 @@ def home():
     return redirect(url_for("dashboard"))
 
 
-# =========================================================
-# DASHBOARD
-# =========================================================
 @app.route("/dashboard")
 @login_required
 def dashboard():
@@ -66,13 +51,9 @@ def dashboard():
     cursor = conn.cursor(dictionary=True)
 
     # -----------------------------
-    # MAIN STATISTICS
+    # BASIC STATISTICS
     # -----------------------------
-
-    cursor.execute("""
-        SELECT COUNT(*) AS total
-        FROM books
-    """)
+    cursor.execute("SELECT COUNT(*) AS total FROM books")
     total_books = cursor.fetchone()["total"]
 
     cursor.execute("""
@@ -105,21 +86,19 @@ def dashboard():
     # -----------------------------
     # LOW STOCK
     # -----------------------------
-
     cursor.execute("""
         SELECT *
         FROM books
         WHERE quantity <= 2
         ORDER BY quantity ASC
     """)
-
     low_stock_books = cursor.fetchall()
+
     low_stock_count = len(low_stock_books)
 
     # -----------------------------
-    # FINES
+    # FINE TOTAL
     # -----------------------------
-
     total_fine = 0
 
     try:
@@ -142,7 +121,6 @@ def dashboard():
     # -----------------------------
     # RECENT ACTIVITY
     # -----------------------------
-
     cursor.execute("""
         SELECT
             br.id,
@@ -153,20 +131,16 @@ def dashboard():
             m.fullname AS member_name,
             b.title AS book_title
         FROM borrow_records br
-        JOIN members m
-            ON br.member_id = m.id
-        JOIN books b
-            ON br.book_id = b.id
+        JOIN members m ON br.member_id = m.id
+        JOIN books b ON br.book_id = b.id
         ORDER BY br.id DESC
         LIMIT 8
     """)
-
     recent_activity = cursor.fetchall()
 
     # -----------------------------
     # MONTHLY BORROWING
     # -----------------------------
-
     cursor.execute("""
         SELECT
             MONTH(borrow_date) AS month_number,
@@ -174,18 +148,14 @@ def dashboard():
             COUNT(*) AS total
         FROM borrow_records
         WHERE YEAR(borrow_date) = YEAR(CURDATE())
-        GROUP BY
-            MONTH(borrow_date),
-            MONTHNAME(borrow_date)
+        GROUP BY MONTH(borrow_date), MONTHNAME(borrow_date)
         ORDER BY MONTH(borrow_date)
     """)
-
     monthly_borrowing = cursor.fetchall()
 
     # -----------------------------
     # BOOKS BY CATEGORY
     # -----------------------------
-
     cursor.execute("""
         SELECT
             category,
@@ -194,13 +164,11 @@ def dashboard():
         GROUP BY category
         ORDER BY total DESC
     """)
-
     books_by_category = cursor.fetchall()
 
     # -----------------------------
     # MOST BORROWED BOOKS
     # -----------------------------
-
     cursor.execute("""
         SELECT
             b.title,
@@ -209,20 +177,15 @@ def dashboard():
         FROM books b
         LEFT JOIN borrow_records br
             ON b.id = br.book_id
-        GROUP BY
-            b.id,
-            b.title,
-            b.author
+        GROUP BY b.id, b.title, b.author
         ORDER BY borrow_count DESC
         LIMIT 5
     """)
-
     most_borrowed = cursor.fetchall()
 
     # -----------------------------
     # MOST ACTIVE MEMBERS
     # -----------------------------
-
     cursor.execute("""
         SELECT
             m.fullname,
@@ -230,25 +193,20 @@ def dashboard():
         FROM members m
         LEFT JOIN borrow_records br
             ON m.id = br.member_id
-        GROUP BY
-            m.id,
-            m.fullname
+        GROUP BY m.id, m.fullname
         ORDER BY borrow_count DESC
         LIMIT 5
     """)
-
     most_active_members = cursor.fetchall()
 
     # -----------------------------
     # RETURN STATISTICS
     # -----------------------------
-
     cursor.execute("""
         SELECT COUNT(*) AS total
         FROM borrow_records
         WHERE return_date IS NOT NULL
     """)
-
     returned_count = cursor.fetchone()["total"]
 
     cursor.execute("""
@@ -257,7 +215,6 @@ def dashboard():
         WHERE return_date IS NOT NULL
         AND return_date <= due_date
     """)
-
     on_time_returns = cursor.fetchone()["total"]
 
     cursor.execute("""
@@ -266,7 +223,6 @@ def dashboard():
         WHERE return_date IS NOT NULL
         AND return_date > due_date
     """)
-
     late_returns = cursor.fetchone()["total"]
 
     current_overdue = overdue
@@ -274,22 +230,19 @@ def dashboard():
     # -----------------------------
     # AVERAGE LATE DAYS
     # -----------------------------
-
     cursor.execute("""
-        SELECT
-            COALESCE(
-                AVG(DATEDIFF(return_date, due_date)),
-                0
-            ) AS average_days
+        SELECT COALESCE(
+            AVG(DATEDIFF(return_date, due_date)), 0
+        ) AS average_days
         FROM borrow_records
         WHERE return_date IS NOT NULL
         AND return_date > due_date
     """)
 
-    average_result = cursor.fetchone()
+    avg_result = cursor.fetchone()
 
     avg_late_days = round(
-        float(average_result["average_days"] or 0),
+        float(avg_result["average_days"] or 0),
         1
     )
 
@@ -300,8 +253,8 @@ def dashboard():
         "dashboard.html",
 
         total_books=total_books,
-        available=available,
         borrowed=borrowed,
+        available=available,
         total_members=total_members,
         overdue=overdue,
         total_fine=total_fine,
@@ -311,7 +264,6 @@ def dashboard():
         recent_activity=recent_activity,
         most_active_members=most_active_members,
 
-        # Dashboard aliases
         low_stock=low_stock_books,
         recent=recent_activity,
         active_members=most_active_members,
@@ -336,80 +288,43 @@ def login():
 
     if request.method == "POST":
 
-        username = request.form.get(
-            "username",
-            ""
-        ).strip()
-
-        password = request.form.get(
-            "password",
-            ""
-        ).strip()
-
-        if not username or not password:
-
-            flash(
-                "Please enter your username and password.",
-                "danger"
-            )
-
-            return render_template("login.html")
+        username = request.form["username"]
+        password = request.form["password"]
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        try:
+        cursor.execute("""
+            SELECT *
+            FROM users
+            WHERE username = %s
+            AND password = %s
+        """, (username, password))
 
-            cursor.execute("""
-                SELECT
-                    id,
-                    username,
-                    password,
-                    role
-                FROM users
-                WHERE username = %s
-                LIMIT 1
-            """, (username,))
+        user = cursor.fetchone()
 
-            user = cursor.fetchone()
+        cursor.close()
+        conn.close()
 
-            if user and str(user["password"]) == password:
+        if user:
 
-                session.clear()
-
-                session["user_id"] = user["id"]
-                session["username"] = user["username"]
-                session["role"] = user["role"]
-
-                session.permanent = True
-
-                flash(
-                    "Login successful.",
-                    "success"
-                )
-
-                return redirect(
-                    url_for("dashboard")
-                )
-
-            else:
-
-                flash(
-                    "Invalid username or password.",
-                    "danger"
-                )
-
-        except mysql.connector.Error as e:
+            session["user_id"] = user["id"]
+            session["username"] = user["username"]
+            session["role"] = user["role"]
 
             flash(
-                f"Database error: {e}",
-                "danger"
+                "Login successful.",
+                "success"
             )
 
-        finally:
+            return redirect(
+                url_for("dashboard")
+            )
 
-            cursor.close()
-            conn.close()
+        flash(
+            "Invalid username or password.",
+            "danger"
+        )
 
     return render_template("login.html")
 
@@ -468,11 +383,11 @@ def add_book():
 
     if request.method == "POST":
 
-        title = request.form.get("title", "").strip()
-        author = request.form.get("author", "").strip()
-        isbn = request.form.get("isbn", "").strip()
-        category = request.form.get("category", "").strip()
-        quantity = request.form.get("quantity", 0)
+        title = request.form["title"].strip()
+        author = request.form["author"].strip()
+        isbn = request.form["isbn"].strip()
+        category = request.form["category"].strip()
+        quantity = request.form["quantity"]
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -481,13 +396,7 @@ def add_book():
 
             cursor.execute("""
                 INSERT INTO books
-                (
-                    title,
-                    author,
-                    isbn,
-                    category,
-                    quantity
-                )
+                (title, author, isbn, category, quantity)
                 VALUES (%s, %s, %s, %s, %s)
             """, (
                 title,
@@ -542,16 +451,15 @@ def edit_book(book_id):
 
     if request.method == "POST":
 
-        title = request.form.get("title", "").strip()
-        author = request.form.get("author", "").strip()
-        isbn = request.form.get("isbn", "").strip()
-        category = request.form.get("category", "").strip()
-        quantity = request.form.get("quantity", 0)
+        title = request.form["title"]
+        author = request.form["author"]
+        isbn = request.form["isbn"]
+        category = request.form["category"]
+        quantity = request.form["quantity"]
 
         cursor.execute("""
             UPDATE books
-            SET
-                title = %s,
+            SET title = %s,
                 author = %s,
                 isbn = %s,
                 category = %s,
@@ -600,7 +508,10 @@ def edit_book(book_id):
 # =========================================================
 # DELETE BOOK
 # =========================================================
-@app.route("/books/delete/<int:book_id>")
+@app.route(
+    "/books/delete/<int:book_id>",
+    methods=["GET", "POST"]
+)
 @login_required
 def delete_book(book_id):
 
@@ -670,10 +581,7 @@ def members():
 # =========================================================
 # ADD MEMBER
 # =========================================================
-@app.route(
-    "/members/add",
-    methods=["GET", "POST"]
-)
+@app.route("/members/add", methods=["GET", "POST"])
 @login_required
 def add_member():
 
@@ -698,100 +606,113 @@ def add_member():
         # BASIC VALIDATION
         # ---------------------------------------------
         if not fullname:
-            flash(
-                "Please enter the member's full name.",
-                "danger"
-            )
-            return redirect(url_for("add_member"))
 
-        if not email:
             flash(
-                "Please enter the member's email.",
+                "Full name is required.",
                 "danger"
             )
-            return redirect(url_for("add_member"))
 
-        if not phone:
+            return redirect(
+                url_for("add_member")
+            )
+
+        if not email and not phone:
+
             flash(
-                "Please enter the member's phone number.",
+                "Please provide an email address or phone number.",
                 "danger"
             )
-            return redirect(url_for("add_member"))
+
+            return redirect(
+                url_for("add_member")
+            )
 
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
 
         try:
 
             # -----------------------------------------
-            # CHECK FOR DUPLICATE EMAIL OR PHONE
+            # CHECK FOR DUPLICATE MEMBER
             # -----------------------------------------
-            cursor.execute("""
-                SELECT id, fullname, email, phone
-                FROM members
-                WHERE email = %s
-                   OR phone = %s
-                LIMIT 1
-            """, (
-                email,
-                phone
-            ))
+            duplicate_conditions = []
+            duplicate_values = []
 
-            existing_member = cursor.fetchone()
+            if email:
+                duplicate_conditions.append(
+                    "email = %s"
+                )
+                duplicate_values.append(email)
 
+            if phone:
+                duplicate_conditions.append(
+                    "phone = %s"
+                )
+                duplicate_values.append(phone)
+
+            existing_member = None
+
+            if duplicate_conditions:
+
+                query = f"""
+                    SELECT
+                        id,
+                        fullname,
+                        email,
+                        phone
+                    FROM members
+                    WHERE {" OR ".join(duplicate_conditions)}
+                    LIMIT 1
+                """
+
+                cursor.execute(
+                    query,
+                    tuple(duplicate_values)
+                )
+
+                existing_member = cursor.fetchone()
+
+            # -----------------------------------------
+            # DUPLICATE FOUND
+            # -----------------------------------------
             if existing_member:
 
-                # Determine what caused the duplicate
-                existing_id = existing_member[0]
-                existing_name = existing_member[1]
-                existing_email = existing_member[2]
-                existing_phone = existing_member[3]
+                duplicate_field = "email or phone"
 
-                if existing_email == email:
-                    flash(
-                        f"A member with email '{email}' already exists "
-                        f"({existing_name}).",
-                        "warning"
-                    )
+                if email and existing_member["email"] == email:
+                    duplicate_field = "email"
 
-                elif existing_phone == phone:
-                    flash(
-                        f"A member with phone number '{phone}' already "
-                        f"exists ({existing_name}).",
-                        "warning"
-                    )
+                elif phone and existing_member["phone"] == phone:
+                    duplicate_field = "phone"
 
-                else:
-                    flash(
-                        "This member already exists in the system.",
-                        "warning"
-                    )
+                flash(
+                    f"Member already exists. "
+                    f"The {duplicate_field} belongs to "
+                    f"{existing_member['fullname']}.",
+                    "warning"
+                )
 
                 return redirect(
                     url_for("members")
                 )
 
             # -----------------------------------------
-            # ADD NEW MEMBER
+            # INSERT MEMBER
             # -----------------------------------------
             cursor.execute("""
                 INSERT INTO members
-                (
-                    fullname,
-                    email,
-                    phone
-                )
+                (fullname, email, phone)
                 VALUES (%s, %s, %s)
             """, (
                 fullname,
-                email,
-                phone
+                email if email else None,
+                phone if phone else None
             ))
 
             conn.commit()
 
             flash(
-                "Member added successfully.",
+                f"Member '{fullname}' added successfully.",
                 "success"
             )
 
@@ -848,17 +769,77 @@ def edit_member(member_id):
             ""
         ).strip()
 
+        # ---------------------------------------------
+        # CHECK FOR DUPLICATE EMAIL OR PHONE
+        # EXCLUDING CURRENT MEMBER
+        # ---------------------------------------------
+        if email or phone:
+
+            conditions = []
+            values = []
+
+            if email:
+                conditions.append(
+                    "email = %s"
+                )
+                values.append(email)
+
+            if phone:
+                conditions.append(
+                    "phone = %s"
+                )
+                values.append(phone)
+
+            query = f"""
+                SELECT
+                    id,
+                    fullname,
+                    email,
+                    phone
+                FROM members
+                WHERE id != %s
+                AND ({" OR ".join(conditions)})
+                LIMIT 1
+            """
+
+            cursor.execute(
+                query,
+                (member_id, *values)
+            )
+
+            duplicate = cursor.fetchone()
+
+            if duplicate:
+
+                cursor.close()
+                conn.close()
+
+                flash(
+                    "Another member already uses "
+                    "that email or phone number.",
+                    "warning"
+                )
+
+                return redirect(
+                    url_for(
+                        "edit_member",
+                        member_id=member_id
+                    )
+                )
+
+        # ---------------------------------------------
+        # UPDATE MEMBER
+        # ---------------------------------------------
         cursor.execute("""
             UPDATE members
-            SET
-                fullname = %s,
+            SET fullname = %s,
                 email = %s,
                 phone = %s
             WHERE id = %s
         """, (
             fullname,
-            email,
-            phone,
+            email if email else None,
+            phone if phone else None,
             member_id
         ))
 
@@ -876,6 +857,9 @@ def edit_member(member_id):
             url_for("members")
         )
 
+    # ---------------------------------------------
+    # GET MEMBER
+    # ---------------------------------------------
     cursor.execute("""
         SELECT *
         FROM members
@@ -887,6 +871,17 @@ def edit_member(member_id):
     cursor.close()
     conn.close()
 
+    if not member:
+
+        flash(
+            "Member not found.",
+            "danger"
+        )
+
+        return redirect(
+            url_for("members")
+        )
+
     return render_template(
         "edit_member.html",
         member=member
@@ -897,16 +892,73 @@ def edit_member(member_id):
 # DELETE MEMBER
 # =========================================================
 @app.route(
-    "/members/delete/<int:member_id>"
+    "/members/delete/<int:member_id>",
+    methods=["POST"]
 )
 @login_required
 def delete_member(member_id):
 
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     try:
 
+        # ---------------------------------------------
+        # CHECK MEMBER EXISTS
+        # ---------------------------------------------
+        cursor.execute("""
+            SELECT
+                id,
+                fullname
+            FROM members
+            WHERE id = %s
+        """, (member_id,))
+
+        member = cursor.fetchone()
+
+        if not member:
+
+            flash(
+                "Member not found.",
+                "danger"
+            )
+
+            return redirect(
+                url_for("members")
+            )
+
+        # ---------------------------------------------
+        # CHECK BORROWING HISTORY
+        # ---------------------------------------------
+        cursor.execute("""
+            SELECT COUNT(*) AS total
+            FROM borrow_records
+            WHERE member_id = %s
+        """, (member_id,))
+
+        result = cursor.fetchone()
+        borrow_count = result["total"]
+
+        # ---------------------------------------------
+        # PROTECT BORROWING HISTORY
+        # ---------------------------------------------
+        if borrow_count > 0:
+
+            flash(
+                f"Cannot delete {member['fullname']} "
+                f"because they have {borrow_count} "
+                f"borrowing record(s). "
+                f"Their library history must be preserved.",
+                "warning"
+            )
+
+            return redirect(
+                url_for("members")
+            )
+
+        # ---------------------------------------------
+        # DELETE MEMBER
+        # ---------------------------------------------
         cursor.execute("""
             DELETE FROM members
             WHERE id = %s
@@ -915,7 +967,7 @@ def delete_member(member_id):
         conn.commit()
 
         flash(
-            "Member deleted successfully.",
+            f"Member '{member['fullname']}' deleted successfully.",
             "success"
         )
 
@@ -953,20 +1005,15 @@ def borrow_book():
 
     if request.method == "POST":
 
-        member_id = request.form.get(
-            "member_id"
-        )
-
-        book_id = request.form.get(
-            "book_id"
-        )
-
-        due_date = request.form.get(
-            "due_date"
-        )
+        member_id = request.form["member_id"]
+        book_id = request.form["book_id"]
+        due_date = request.form["due_date"]
 
         try:
 
+            # -----------------------------------------
+            # CHECK BOOK
+            # -----------------------------------------
             cursor.execute("""
                 SELECT *
                 FROM books
@@ -991,6 +1038,9 @@ def borrow_book():
 
             else:
 
+                # -------------------------------------
+                # CHECK MEMBER
+                # -------------------------------------
                 cursor.execute("""
                     SELECT *
                     FROM members
@@ -1008,6 +1058,9 @@ def borrow_book():
 
                 else:
 
+                    # -----------------------------
+                    # CREATE BORROW RECORD
+                    # -----------------------------
                     cursor.execute("""
                         INSERT INTO borrow_records
                         (
@@ -1031,6 +1084,9 @@ def borrow_book():
                         due_date
                     ))
 
+                    # -----------------------------
+                    # REDUCE STOCK
+                    # -----------------------------
                     cursor.execute("""
                         UPDATE books
                         SET quantity = quantity - 1
@@ -1060,7 +1116,9 @@ def borrow_book():
                 "danger"
             )
 
-    # Available books
+    # ---------------------------------------------
+    # GET AVAILABLE BOOKS
+    # ---------------------------------------------
     cursor.execute("""
         SELECT *
         FROM books
@@ -1070,7 +1128,9 @@ def borrow_book():
 
     books_list = cursor.fetchall()
 
-    # Members
+    # ---------------------------------------------
+    # GET MEMBERS
+    # ---------------------------------------------
     cursor.execute("""
         SELECT *
         FROM members
@@ -1129,9 +1189,7 @@ def borrowed_books():
 # =========================================================
 # RETURN BOOK
 # =========================================================
-@app.route(
-    "/return/<int:record_id>"
-)
+@app.route("/return/<int:record_id>")
 @login_required
 def return_book(record_id):
 
@@ -1166,8 +1224,7 @@ def return_book(record_id):
 
             cursor.execute("""
                 UPDATE borrow_records
-                SET
-                    return_date = CURDATE(),
+                SET return_date = CURDATE(),
                     status = 'Returned'
                 WHERE id = %s
             """, (record_id,))
@@ -1353,9 +1410,7 @@ def fines():
 # =========================================================
 # PAY FINE
 # =========================================================
-@app.route(
-    "/fines/pay/<int:record_id>"
-)
+@app.route("/fines/pay/<int:record_id>")
 @login_required
 def pay_fine(record_id):
 
@@ -1474,8 +1529,6 @@ def search():
 
     if query:
 
-        search_value = f"%{query}%"
-
         cursor.execute("""
             SELECT *
             FROM books
@@ -1485,10 +1538,10 @@ def search():
                OR category LIKE %s
             ORDER BY title
         """, (
-            search_value,
-            search_value,
-            search_value,
-            search_value
+            f"%{query}%",
+            f"%{query}%",
+            f"%{query}%",
+            f"%{query}%"
         ))
 
     else:
@@ -1526,8 +1579,6 @@ def book_suggestions():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    search_value = f"%{query}%"
-
     cursor.execute("""
         SELECT
             id,
@@ -1542,9 +1593,9 @@ def book_suggestions():
         ORDER BY title
         LIMIT 10
     """, (
-        search_value,
-        search_value,
-        search_value
+        f"%{query}%",
+        f"%{query}%",
+        f"%{query}%"
     ))
 
     books_list = cursor.fetchall()
@@ -1552,7 +1603,9 @@ def book_suggestions():
     cursor.close()
     conn.close()
 
-    return jsonify(books_list)
+    return jsonify(
+        books_list
+    )
 
 
 # =========================================================
@@ -1583,10 +1636,11 @@ def profile():
 
 
 # =========================================================
-# ERROR HANDLERS
+# ERROR PAGES
 # =========================================================
 @app.errorhandler(404)
 def page_not_found(error):
+
     return render_template(
         "404.html"
     ), 404
@@ -1594,6 +1648,7 @@ def page_not_found(error):
 
 @app.errorhandler(500)
 def internal_server_error(error):
+
     return render_template(
         "500.html"
     ), 500
