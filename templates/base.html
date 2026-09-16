@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 
@@ -14,11 +15,13 @@
         {% endblock %}
     </title>
 
+
     <!-- Bootstrap -->
     <link
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
         rel="stylesheet"
     >
+
 
     <!-- Bootstrap Icons -->
     <link
@@ -26,12 +29,14 @@
         href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
     >
 
+
     <style>
 
         body {
             background-color: #f5f7fb;
             font-family: Arial, Helvetica, sans-serif;
         }
+
 
         /* SIDEBAR */
 
@@ -48,19 +53,23 @@
             overflow-y: auto;
         }
 
+
         .sidebar-brand {
             padding: 22px 20px;
             border-bottom: 1px solid rgba(255,255,255,0.1);
         }
+
 
         .sidebar-brand h4 {
             margin: 0;
             font-weight: 700;
         }
 
+
         .sidebar-brand small {
             color: #adb5bd;
         }
+
 
         .sidebar .nav-link {
             color: #cbd5e1;
@@ -70,20 +79,24 @@
             transition: 0.2s;
         }
 
+
         .sidebar .nav-link:hover {
             background: #273653;
             color: white;
         }
+
 
         .sidebar .nav-link.active {
             background: #0d6efd;
             color: white;
         }
 
+
         .sidebar .nav-link i {
             margin-right: 10px;
             width: 20px;
         }
+
 
         .sidebar-section {
             font-size: 11px;
@@ -93,12 +106,14 @@
             letter-spacing: 1px;
         }
 
+
         /* MAIN CONTENT */
 
         .main-content {
             margin-left: 250px;
             min-height: 100vh;
         }
+
 
         /* TOP NAVBAR */
 
@@ -111,16 +126,19 @@
             z-index: 999;
         }
 
+
         .topbar-title {
             font-weight: 600;
             color: #172033;
         }
+
 
         .user-info {
             display: flex;
             align-items: center;
             gap: 10px;
         }
+
 
         .user-avatar {
             width: 40px;
@@ -134,21 +152,25 @@
             font-weight: bold;
         }
 
+
         /* CARDS */
 
         .card {
             border-radius: 12px;
         }
 
+
         .stat-card {
             border: none;
             transition: transform 0.2s, box-shadow 0.2s;
         }
 
+
         .stat-card:hover {
             transform: translateY(-3px);
             box-shadow: 0 8px 20px rgba(0,0,0,0.08);
         }
+
 
         /* ALERTS */
 
@@ -156,15 +178,18 @@
             border-radius: 10px;
         }
 
+
         /* TABLES */
 
         .table {
             vertical-align: middle;
         }
 
+
         .table thead th {
             white-space: nowrap;
         }
+
 
         /* MOBILE */
 
@@ -180,6 +205,7 @@
             }
 
         }
+
 
         /* PRINT */
 
@@ -229,18 +255,17 @@
     </div>
 
 
-    <!-- =================================================
-         MAIN
-    ================================================= -->
+    <!-- MAIN -->
 
     <div class="sidebar-section">
         Main
     </div>
 
+
     <nav class="nav flex-column">
 
         <a href="{{ url_for('dashboard') }}"
-           class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
+           class="nav-link">
 
             <i class="bi bi-speedometer2"></i>
             Dashboard
@@ -249,7 +274,7 @@
 
 
         <a href="{{ url_for('books') }}"
-           class="nav-link {% if request.endpoint in ['books', 'add_book', 'edit_book'] %}active{% endif %}">
+           class="nav-link">
 
             <i class="bi bi-book"></i>
             Manage Books
@@ -258,7 +283,7 @@
 
 
         <a href="{{ url_for('members') }}"
-           class="nav-link {% if request.endpoint in ['members', 'add_member', 'edit_member'] %}active{% endif %}">
+           class="nav-link">
 
             <i class="bi bi-people"></i>
             Members
@@ -267,7 +292,7 @@
 
 
         <a href="{{ url_for('borrow_book') }}"
-           class="nav-link {% if request.endpoint == 'borrow_book' %}active{% endif %}">
+           class="nav-link">
 
             <i class="bi bi-journal-arrow-up"></i>
             Borrow Book
@@ -276,7 +301,7 @@
 
 
         <a href="{{ url_for('borrowed_books') }}"
-           class="nav-link {% if request.endpoint == 'borrowed_books' %}active{% endif %}">
+           class="nav-link">
 
             <i class="bi bi-bookmark-check"></i>
             Borrowed Books
@@ -285,7 +310,7 @@
 
 
         <a href="{{ url_for('borrow_history') }}"
-           class="nav-link {% if request.endpoint == 'borrow_history' %}active{% endif %}">
+           class="nav-link">
 
             <i class="bi bi-clock-history"></i>
             Borrowing History
@@ -295,18 +320,17 @@
     </nav>
 
 
-    <!-- =================================================
-         MANAGEMENT
-    ================================================= -->
+    <!-- MANAGEMENT -->
 
     <div class="sidebar-section">
         Management
     </div>
 
+
     <nav class="nav flex-column">
 
         <a href="{{ url_for('overdue_books') }}"
-           class="nav-link {% if request.endpoint == 'overdue_books' %}active{% endif %}">
+           class="nav-link">
 
             <i class="bi bi-exclamation-circle"></i>
             Overdue Books
@@ -315,7 +339,7 @@
 
 
         <a href="{{ url_for('fines') }}"
-           class="nav-link {% if request.endpoint in ['fines', 'pay_fine'] %}active{% endif %}">
+           class="nav-link">
 
             <i class="bi bi-cash-coin"></i>
             Fines
@@ -324,7 +348,7 @@
 
 
         <a href="{{ url_for('low_stock') }}"
-           class="nav-link {% if request.endpoint == 'low_stock' %}active{% endif %}">
+           class="nav-link">
 
             <i class="bi bi-exclamation-triangle"></i>
             Low Stock
@@ -333,7 +357,7 @@
 
 
         <a href="{{ url_for('search') }}"
-           class="nav-link {% if request.endpoint == 'search' %}active{% endif %}">
+           class="nav-link">
 
             <i class="bi bi-search"></i>
             Search Books
@@ -343,44 +367,56 @@
     </nav>
 
 
-    <!-- =================================================
-         ANALYTICS
-    ================================================= -->
+   <!-- REPORTS & ANALYTICS -->
 
-    <div class="sidebar-section">
+<div class="sidebar-section">
+    Reports & Analytics
+</div>
+
+<nav class="nav flex-column">
+
+    <a href="{{ url_for('dashboard') }}"
+       class="nav-link">
+
+        <i class="bi bi-graph-up"></i>
         Analytics
-    </div>
 
-    <nav class="nav flex-column">
+    </a>
 
-        <a href="{{ url_for('dashboard') }}"
-           class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
-
-            <i class="bi bi-graph-up"></i>
-            Analytics
-
-        </a>
-
-    </nav>
+</nav>
 
 
-    <!-- =================================================
-         ACCOUNT
-    ================================================= -->
+    <!-- ACCOUNT -->
 
     <div class="sidebar-section">
         Account
     </div>
 
+
     <nav class="nav flex-column mb-4">
 
         <a href="{{ url_for('profile') }}"
-           class="nav-link {% if request.endpoint == 'profile' %}active{% endif %}">
+           class="nav-link">
 
             <i class="bi bi-person-circle"></i>
             My Profile
 
         </a>
+
+
+        <!-- ADMIN ONLY -->
+
+        {% if session.get("role") == "admin" %}
+
+        <a href="{{ url_for('create_user') }}"
+           class="nav-link">
+
+            <i class="bi bi-person-plus"></i>
+            Create User Account
+
+        </a>
+
+        {% endif %}
 
 
         <a href="{{ url_for('logout') }}"
@@ -472,30 +508,26 @@
                     >
 
                         {% if category == "success" %}
-
                             <i class="bi bi-check-circle-fill"></i>
 
                         {% elif category == "danger" %}
-
                             <i class="bi bi-exclamation-triangle-fill"></i>
 
                         {% elif category == "warning" %}
-
                             <i class="bi bi-exclamation-circle-fill"></i>
 
                         {% else %}
-
                             <i class="bi bi-info-circle-fill"></i>
-
                         {% endif %}
 
                         {{ message }}
 
+
                         <button
                             type="button"
                             class="btn-close"
-                            data-bs-dismiss="alert">
-                        </button>
+                            data-bs-dismiss="alert"
+                        ></button>
 
                     </div>
 
@@ -513,6 +545,7 @@
     <main class="container-fluid px-4 pb-5">
 
         {% block content %}
+
         {% endblock %}
 
     </main>
@@ -529,9 +562,11 @@
 
 
 {% block scripts %}
+
 {% endblock %}
 
 
 </body>
 
 </html>
+```

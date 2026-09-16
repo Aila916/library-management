@@ -4,12 +4,17 @@ import mysql.connector
 from datetime import date, datetime
 import os
 from dotenv import load_dotenv
+from werkzeug.security import generate_password_hash, check_password_hash
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = "library_management_secret_key"
 
+
+# =========================================================
+# DATABASE CONNECTION
+# =========================================================
 def get_db_connection():
     config = {
         "host": os.getenv("DB_HOST", "localhost"),
@@ -36,6 +41,28 @@ def login_required(f):
 
         if "user_id" not in session:
             return redirect(url_for("login"))
+
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+# =========================================================
+# ADMIN REQUIRED
+# =========================================================
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+
+        if "user_id" not in session:
+            return redirect(url_for("login"))
+
+        if session.get("role") != "admin":
+            flash(
+                "Access denied. Only administrators can create user accounts.",
+                "danger"
+            )
+            return redirect(url_for("dashboard"))
 
         return f(*args, **kwargs)
 
@@ -296,25 +323,62 @@ def login():
 
     if request.method == "POST":
 
-        username = request.form["username"]
-        password = request.form["password"]
+        username = request.form.get(
+            "username",
+            ""
+        ).strip()
+
+        password = request.form.get(
+            "password",
+            ""
+        )
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        cursor.execute("""
-            SELECT *
-            FROM users
-            WHERE username = %s
-            AND password = %s
-        """, (username, password))
+        try:
 
-        user = cursor.fetchone()
+            cursor.execute("""
+                SELECT *
+                FROM users
+                WHERE username = %s
+            """, (username,))
 
-        cursor.close()
-        conn.close()
+            user = cursor.fetchone()
+
+        finally:
+
+            cursor.close()
+            conn.close()
+
+        # -------------------------------------------------
+        # CHECK PASSWORD
+        #
+        # Supports:
+        # 1. Existing plain-text passwords
+        # 2. New securely hashed passwords
+        # -------------------------------------------------
+        valid_password = False
 
         if user:
+
+            stored_password = user["password"]
+
+            try:
+
+                valid_password = check_password_hash(
+                    stored_password,
+                    password
+                )
+
+            except (ValueError, TypeError):
+
+                # Compatibility with existing accounts
+                valid_password = (
+                    stored_password == password
+                )
+
+        if user and valid_password:
 
             session["user_id"] = user["id"]
             session["username"] = user["username"]
@@ -335,6 +399,192 @@ def login():
         )
 
     return render_template("login.html")
+
+
+# =========================================================
+# CREATE USER ACCOUNT - ADMIN ONLY
+# =========================================================
+@app.route(
+    "/admin/create-user",
+    methods=["GET", "POST"]
+)
+@login_required
+@admin_required
+def create_user():
+
+    if request.method == "POST":
+
+        username = request.form.get(
+            "username",
+            ""
+        ).strip()
+
+        password = request.form.get(
+            "password",
+            ""
+        )
+
+        confirm_password = request.form.get(
+            "confirm_password",
+            ""
+        )
+
+        role = request.form.get(
+            "role",
+            "librarian"
+        ).strip().lower()
+
+        # ---------------------------------------------
+        # VALIDATE USERNAME
+        # ---------------------------------------------
+        if not username:
+
+            flash(
+                "Username is required.",
+                "danger"
+            )
+
+            return redirect(
+                url_for("create_user")
+            )
+
+        # ---------------------------------------------
+        # VALIDATE PASSWORD
+        # ---------------------------------------------
+        if not password:
+
+            flash(
+                "Password is required.",
+                "danger"
+            )
+
+            return redirect(
+                url_for("create_user")
+            )
+
+        if len(password) < 6:
+
+            flash(
+                "Password must be at least 6 characters.",
+                "danger"
+            )
+
+            return redirect(
+                url_for("create_user")
+            )
+
+        # ---------------------------------------------
+        # CONFIRM PASSWORD
+        # ---------------------------------------------
+        if password != confirm_password:
+
+            flash(
+                "Passwords do not match.",
+                "danger"
+            )
+
+            return redirect(
+                url_for("create_user")
+            )
+
+        # ---------------------------------------------
+        # VALIDATE ROLE
+        # ---------------------------------------------
+        if role not in ["admin", "librarian"]:
+
+            flash(
+                "Invalid user role.",
+                "danger"
+            )
+
+            return redirect(
+                url_for("create_user")
+            )
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        try:
+
+            # -----------------------------------------
+            # CHECK DUPLICATE USERNAME
+            # -----------------------------------------
+            cursor.execute("""
+                SELECT id
+                FROM users
+                WHERE username = %s
+            """, (username,))
+
+            existing_user = cursor.fetchone()
+
+            if existing_user:
+
+                flash(
+                    f"Username '{username}' already exists.",
+                    "warning"
+                )
+
+                return redirect(
+                    url_for("create_user")
+                )
+
+            # -----------------------------------------
+            # HASH PASSWORD
+            # -----------------------------------------
+            hashed_password = generate_password_hash(
+                password
+            )
+
+            # -----------------------------------------
+            # CREATE USER
+            # -----------------------------------------
+            cursor.execute("""
+                INSERT INTO users
+                (
+                    username,
+                    password,
+                    role
+                )
+                VALUES
+                (
+                    %s,
+                    %s,
+                    %s
+                )
+            """, (
+                username,
+                hashed_password,
+                role
+            ))
+
+            conn.commit()
+
+            flash(
+                f"User account '{username}' created successfully.",
+                "success"
+            )
+
+            return redirect(
+                url_for("create_user")
+            )
+
+        except mysql.connector.Error as e:
+
+            conn.rollback()
+
+            flash(
+                f"Error creating user account: {e}",
+                "danger"
+            )
+
+        finally:
+
+            cursor.close()
+            conn.close()
+
+    return render_template(
+        "create_user.html"
+    )
 
 
 # =========================================================
@@ -1066,9 +1316,9 @@ def borrow_book():
 
                 else:
 
-                    # -----------------------------
+                    # ---------------------------------
                     # CREATE BORROW RECORD
-                    # -----------------------------
+                    # ---------------------------------
                     cursor.execute("""
                         INSERT INTO borrow_records
                         (
@@ -1092,9 +1342,9 @@ def borrow_book():
                         due_date
                     ))
 
-                    # -----------------------------
+                    # ---------------------------------
                     # REDUCE STOCK
-                    # -----------------------------
+                    # ---------------------------------
                     cursor.execute("""
                         UPDATE books
                         SET quantity = quantity - 1
