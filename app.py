@@ -1,15 +1,24 @@
+
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from functools import wraps
 import mysql.connector
 from datetime import date, datetime
 import os
-from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
 
-load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = "library_management_secret_key"
+
+# =========================================================
+# FLASK SECRET KEY
+# =========================================================
+app.secret_key = os.getenv(
+    "SECRET_KEY",
+    "library_management_secret_key_2026"
+)
+
+# Make sessions last for the browser session
+app.config["SESSION_PERMANENT"] = True
 
 
 # =========================================================
@@ -27,7 +36,29 @@ def get_db_connection():
     ssl_ca = os.getenv("DB_SSL_CA")
 
     if ssl_ca:
-        config["ssl_ca"] = ssl_ca
+        if os.path.isfile(ssl_ca):
+            config["ssl_ca"] = ssl_ca
+        else:
+            import base64
+            import tempfile
+
+            ca_path = os.path.join(
+                tempfile.gettempdir(),
+                "aiven-ca.pem"
+            )
+
+            try:
+                ca_data = base64.b64decode(ssl_ca)
+
+                with open(ca_path, "wb") as ca_file:
+                    ca_file.write(ca_data)
+
+                config["ssl_ca"] = ca_path
+
+            except Exception as err:
+                raise RuntimeError(
+                    "Invalid Aiven CA certificate configuration."
+                ) from err
 
     return mysql.connector.connect(**config)
 
@@ -40,6 +71,10 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
 
         if "user_id" not in session:
+            flash(
+                "Please login to continue.",
+                "warning"
+            )
             return redirect(url_for("login"))
 
         return f(*args, **kwargs)
@@ -70,339 +105,7 @@ def admin_required(f):
 
 
 # =========================================================
-# HOME / DASHBOARD
-# =========================================================
-@app.route("/")
-@login_required
-def home():
-    return redirect(url_for("dashboard"))
-
-
-@app.route("/dashboard")
-@login_required
-def dashboard():
-
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    # -----------------------------
-    # BASIC STATISTICS
-    # -----------------------------
-    cursor.execute("SELECT COUNT(*) AS total FROM books")
-    total_books = cursor.fetchone()["total"]
-
-    cursor.execute("""
-        SELECT COALESCE(SUM(quantity), 0) AS total
-        FROM books
-    """)
-    available = cursor.fetchone()["total"]
-
-    cursor.execute("""
-        SELECT COUNT(*) AS total
-        FROM borrow_records
-        WHERE status = 'Borrowed'
-    """)
-    borrowed = cursor.fetchone()["total"]
-
-    cursor.execute("""
-        SELECT COUNT(*) AS total
-        FROM members
-    """)
-    total_members = cursor.fetchone()["total"]
-
-    cursor.execute("""
-        SELECT COUNT(*) AS total
-        FROM borrow_records
-        WHERE status = 'Borrowed'
-        AND due_date < CURDATE()
-    """)
-    overdue = cursor.fetchone()["total"]
-
-    # -----------------------------
-    # LOW STOCK
-    # -----------------------------
-    cursor.execute("""
-        SELECT *
-        FROM books
-        WHERE quantity <= 2
-        ORDER BY quantity ASC
-    """)
-    low_stock_books = cursor.fetchall()
-
-    low_stock_count = len(low_stock_books)
-
-    # -----------------------------
-    # FINE TOTAL
-    # -----------------------------
-    total_fine = 0
-
-    try:
-
-        cursor.execute("""
-            SELECT COALESCE(SUM(amount), 0) AS total
-            FROM fines
-            WHERE status = 'Unpaid'
-        """)
-
-        result = cursor.fetchone()
-
-        if result:
-            total_fine = result["total"]
-
-    except mysql.connector.Error:
-
-        total_fine = 0
-
-    # -----------------------------
-    # RECENT ACTIVITY
-    # -----------------------------
-    cursor.execute("""
-        SELECT
-            br.id,
-            br.borrow_date,
-            br.due_date,
-            br.return_date,
-            br.status,
-            m.fullname AS member_name,
-            b.title AS book_title
-        FROM borrow_records br
-        JOIN members m ON br.member_id = m.id
-        JOIN books b ON br.book_id = b.id
-        ORDER BY br.id DESC
-        LIMIT 8
-    """)
-    recent_activity = cursor.fetchall()
-
-    # -----------------------------
-    # MONTHLY BORROWING
-    # -----------------------------
-    cursor.execute("""
-        SELECT
-            MONTH(borrow_date) AS month_number,
-            MONTHNAME(borrow_date) AS month_name,
-            COUNT(*) AS total
-        FROM borrow_records
-        WHERE YEAR(borrow_date) = YEAR(CURDATE())
-        GROUP BY MONTH(borrow_date), MONTHNAME(borrow_date)
-        ORDER BY MONTH(borrow_date)
-    """)
-    monthly_borrowing = cursor.fetchall()
-
-    # -----------------------------
-    # BOOKS BY CATEGORY
-    # -----------------------------
-    cursor.execute("""
-        SELECT
-            category,
-            COUNT(*) AS total
-        FROM books
-        GROUP BY category
-        ORDER BY total DESC
-    """)
-    books_by_category = cursor.fetchall()
-
-    # -----------------------------
-    # MOST BORROWED BOOKS
-    # -----------------------------
-    cursor.execute("""
-        SELECT
-            b.title,
-            b.author,
-            COUNT(br.id) AS borrow_count
-        FROM books b
-        LEFT JOIN borrow_records br
-            ON b.id = br.book_id
-        GROUP BY b.id, b.title, b.author
-        ORDER BY borrow_count DESC
-        LIMIT 5
-    """)
-    most_borrowed = cursor.fetchall()
-
-    # -----------------------------
-    # MOST ACTIVE MEMBERS
-    # -----------------------------
-    cursor.execute("""
-        SELECT
-            m.fullname,
-            COUNT(br.id) AS borrow_count
-        FROM members m
-        LEFT JOIN borrow_records br
-            ON m.id = br.member_id
-        GROUP BY m.id, m.fullname
-        ORDER BY borrow_count DESC
-        LIMIT 5
-    """)
-    most_active_members = cursor.fetchall()
-
-    # -----------------------------
-    # RETURN STATISTICS
-    # -----------------------------
-    cursor.execute("""
-        SELECT COUNT(*) AS total
-        FROM borrow_records
-        WHERE return_date IS NOT NULL
-    """)
-    returned_count = cursor.fetchone()["total"]
-
-    cursor.execute("""
-        SELECT COUNT(*) AS total
-        FROM borrow_records
-        WHERE return_date IS NOT NULL
-        AND return_date <= due_date
-    """)
-    on_time_returns = cursor.fetchone()["total"]
-
-    cursor.execute("""
-        SELECT COUNT(*) AS total
-        FROM borrow_records
-        WHERE return_date IS NOT NULL
-        AND return_date > due_date
-    """)
-    late_returns = cursor.fetchone()["total"]
-
-    current_overdue = overdue
-
-    # -----------------------------
-    # AVERAGE LATE DAYS
-    # -----------------------------
-    cursor.execute("""
-        SELECT COALESCE(
-            AVG(DATEDIFF(return_date, due_date)), 0
-        ) AS average_days
-        FROM borrow_records
-        WHERE return_date IS NOT NULL
-        AND return_date > due_date
-    """)
-
-    avg_result = cursor.fetchone()
-
-    avg_late_days = round(
-        float(avg_result["average_days"] or 0),
-        1
-    )
-
-    cursor.close()
-    conn.close()
-
-    return render_template(
-        "dashboard.html",
-
-        total_books=total_books,
-        borrowed=borrowed,
-        available=available,
-        total_members=total_members,
-        overdue=overdue,
-        total_fine=total_fine,
-        low_stock_count=low_stock_count,
-
-        low_stock_books=low_stock_books,
-        recent_activity=recent_activity,
-        most_active_members=most_active_members,
-
-        low_stock=low_stock_books,
-        recent=recent_activity,
-        active_members=most_active_members,
-
-        monthly_borrowing=monthly_borrowing,
-        books_by_category=books_by_category,
-        most_borrowed=most_borrowed,
-
-        returned_count=returned_count,
-        on_time_returns=on_time_returns,
-        late_returns=late_returns,
-        current_overdue=current_overdue,
-        avg_late_days=avg_late_days
-    )
-
-
-# =========================================================
-# LOGIN
-# =========================================================
-@app.route("/login", methods=["GET", "POST"])
-def login():
-
-    if request.method == "POST":
-
-        username = request.form.get(
-            "username",
-            ""
-        ).strip()
-
-        password = request.form.get(
-            "password",
-            ""
-        )
-
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        try:
-
-            cursor.execute("""
-                SELECT *
-                FROM users
-                WHERE username = %s
-            """, (username,))
-
-            user = cursor.fetchone()
-
-        finally:
-
-            cursor.close()
-            conn.close()
-
-        # -------------------------------------------------
-        # CHECK PASSWORD
-        #
-        # Supports:
-        # 1. Existing plain-text passwords
-        # 2. New securely hashed passwords
-        # -------------------------------------------------
-        valid_password = False
-
-        if user:
-
-            stored_password = user["password"]
-
-            try:
-
-                valid_password = check_password_hash(
-                    stored_password,
-                    password
-                )
-
-            except (ValueError, TypeError):
-
-                # Compatibility with existing accounts
-                valid_password = (
-                    stored_password == password
-                )
-
-        if user and valid_password:
-
-            session["user_id"] = user["id"]
-            session["username"] = user["username"]
-            session["role"] = user["role"]
-
-            flash(
-                "Login successful.",
-                "success"
-            )
-
-            return redirect(
-                url_for("dashboard")
-            )
-
-        flash(
-            "Invalid username or password.",
-            "danger"
-        )
-
-    return render_template("login.html")
-
-
-# =========================================================
-# CREATE USER ACCOUNT - ADMIN ONLY
+# CREATE USER ACCOUNT
 # =========================================================
 @app.route(
     "/admin/create-user",
@@ -434,48 +137,21 @@ def create_user():
             "librarian"
         ).strip().lower()
 
-        # ---------------------------------------------
-        # VALIDATE USERNAME
-        # ---------------------------------------------
-        if not username:
+        # -----------------------------
+        # VALIDATION
+        # -----------------------------
+
+        if not username or not password:
 
             flash(
-                "Username is required.",
+                "Username and password are required.",
                 "danger"
             )
 
-            return redirect(
-                url_for("create_user")
+            return render_template(
+                "create_user.html"
             )
 
-        # ---------------------------------------------
-        # VALIDATE PASSWORD
-        # ---------------------------------------------
-        if not password:
-
-            flash(
-                "Password is required.",
-                "danger"
-            )
-
-            return redirect(
-                url_for("create_user")
-            )
-
-        if len(password) < 6:
-
-            flash(
-                "Password must be at least 6 characters.",
-                "danger"
-            )
-
-            return redirect(
-                url_for("create_user")
-            )
-
-        # ---------------------------------------------
-        # CONFIRM PASSWORD
-        # ---------------------------------------------
         if password != confirm_password:
 
             flash(
@@ -483,13 +159,10 @@ def create_user():
                 "danger"
             )
 
-            return redirect(
-                url_for("create_user")
+            return render_template(
+                "create_user.html"
             )
 
-        # ---------------------------------------------
-        # VALIDATE ROLE
-        # ---------------------------------------------
         if role not in ["admin", "librarian"]:
 
             flash(
@@ -497,48 +170,55 @@ def create_user():
                 "danger"
             )
 
-            return redirect(
-                url_for("create_user")
+            return render_template(
+                "create_user.html"
             )
 
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
 
         try:
 
-            # -----------------------------------------
+            # -----------------------------
             # CHECK DUPLICATE USERNAME
-            # -----------------------------------------
-            cursor.execute("""
+            # -----------------------------
+
+            cursor.execute(
+                """
                 SELECT id
                 FROM users
                 WHERE username = %s
-            """, (username,))
+                """,
+                (username,)
+            )
 
             existing_user = cursor.fetchone()
 
             if existing_user:
 
                 flash(
-                    f"Username '{username}' already exists.",
-                    "warning"
+                    "Username already exists.",
+                    "danger"
                 )
 
-                return redirect(
-                    url_for("create_user")
+                return render_template(
+                    "create_user.html"
                 )
 
-            # -----------------------------------------
+            # -----------------------------
             # HASH PASSWORD
-            # -----------------------------------------
+            # -----------------------------
+
             hashed_password = generate_password_hash(
                 password
             )
 
-            # -----------------------------------------
-            # CREATE USER
-            # -----------------------------------------
-            cursor.execute("""
+            # -----------------------------
+            # INSERT USER
+            # -----------------------------
+
+            cursor.execute(
+                """
                 INSERT INTO users
                 (
                     username,
@@ -551,11 +231,13 @@ def create_user():
                     %s,
                     %s
                 )
-            """, (
-                username,
-                hashed_password,
-                role
-            ))
+                """,
+                (
+                    username,
+                    hashed_password,
+                    role
+                )
+            )
 
             conn.commit()
 
@@ -568,12 +250,12 @@ def create_user():
                 url_for("create_user")
             )
 
-        except mysql.connector.Error as e:
+        except mysql.connector.Error as err:
 
             conn.rollback()
 
             flash(
-                f"Error creating user account: {e}",
+                f"Could not create user account: {err}",
                 "danger"
             )
 
@@ -585,6 +267,380 @@ def create_user():
     return render_template(
         "create_user.html"
     )
+
+
+# =========================================================
+# HOME
+# =========================================================
+@app.route("/")
+@login_required
+def home():
+
+    return redirect(
+        url_for("dashboard")
+    )
+
+
+# =========================================================
+# DASHBOARD
+# =========================================================
+@app.route("/dashboard")
+@login_required
+def dashboard():
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # -----------------------------
+    # MAIN STATISTICS
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT COUNT(*) AS total
+        FROM books
+    """)
+
+    total_books = cursor.fetchone()["total"]
+
+    cursor.execute("""
+        SELECT COALESCE(SUM(quantity), 0) AS total
+        FROM books
+    """)
+
+    available = cursor.fetchone()["total"]
+
+    cursor.execute("""
+        SELECT COUNT(*) AS total
+        FROM borrow_records
+        WHERE status = 'Borrowed'
+    """)
+
+    borrowed = cursor.fetchone()["total"]
+
+    cursor.execute("""
+        SELECT COUNT(*) AS total
+        FROM members
+    """)
+
+    total_members = cursor.fetchone()["total"]
+
+    cursor.execute("""
+        SELECT COUNT(*) AS total
+        FROM borrow_records
+        WHERE status = 'Borrowed'
+        AND due_date < CURDATE()
+    """)
+
+    overdue = cursor.fetchone()["total"]
+
+    # -----------------------------
+    # LOW STOCK
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT *
+        FROM books
+        WHERE quantity <= 2
+        ORDER BY quantity ASC
+    """)
+
+    low_stock_books = cursor.fetchall()
+    low_stock_count = len(low_stock_books)
+
+    # -----------------------------
+    # FINES
+    # -----------------------------
+
+    total_fine = 0
+
+    try:
+
+        cursor.execute("""
+            SELECT COALESCE(SUM(amount), 0) AS total
+            FROM fines
+            WHERE status = 'Unpaid'
+        """)
+
+        result = cursor.fetchone()
+
+        if result:
+            total_fine = result["total"]
+
+    except mysql.connector.Error:
+
+        total_fine = 0
+
+    # -----------------------------
+    # RECENT ACTIVITY
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT
+            br.id,
+            br.borrow_date,
+            br.due_date,
+            br.return_date,
+            br.status,
+            m.fullname AS member_name,
+            b.title AS book_title
+        FROM borrow_records br
+        JOIN members m
+            ON br.member_id = m.id
+        JOIN books b
+            ON br.book_id = b.id
+        ORDER BY br.id DESC
+        LIMIT 8
+    """)
+
+    recent_activity = cursor.fetchall()
+
+    # -----------------------------
+    # MONTHLY BORROWING
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT
+            MONTH(borrow_date) AS month_number,
+            MONTHNAME(borrow_date) AS month_name,
+            COUNT(*) AS total
+        FROM borrow_records
+        WHERE YEAR(borrow_date) = YEAR(CURDATE())
+        GROUP BY
+            MONTH(borrow_date),
+            MONTHNAME(borrow_date)
+        ORDER BY MONTH(borrow_date)
+    """)
+
+    monthly_borrowing = cursor.fetchall()
+
+    # -----------------------------
+    # BOOKS BY CATEGORY
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT
+            category,
+            COUNT(*) AS total
+        FROM books
+        GROUP BY category
+        ORDER BY total DESC
+    """)
+
+    books_by_category = cursor.fetchall()
+
+    # -----------------------------
+    # MOST BORROWED BOOKS
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT
+            b.title,
+            b.author,
+            COUNT(br.id) AS borrow_count
+        FROM books b
+        LEFT JOIN borrow_records br
+            ON b.id = br.book_id
+        GROUP BY
+            b.id,
+            b.title,
+            b.author
+        ORDER BY borrow_count DESC
+        LIMIT 5
+    """)
+
+    most_borrowed = cursor.fetchall()
+
+    # -----------------------------
+    # MOST ACTIVE MEMBERS
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT
+            m.fullname,
+            COUNT(br.id) AS borrow_count
+        FROM members m
+        LEFT JOIN borrow_records br
+            ON m.id = br.member_id
+        GROUP BY
+            m.id,
+            m.fullname
+        ORDER BY borrow_count DESC
+        LIMIT 5
+    """)
+
+    most_active_members = cursor.fetchall()
+
+    # -----------------------------
+    # RETURN STATISTICS
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT COUNT(*) AS total
+        FROM borrow_records
+        WHERE return_date IS NOT NULL
+    """)
+
+    returned_count = cursor.fetchone()["total"]
+
+    cursor.execute("""
+        SELECT COUNT(*) AS total
+        FROM borrow_records
+        WHERE return_date IS NOT NULL
+        AND return_date <= due_date
+    """)
+
+    on_time_returns = cursor.fetchone()["total"]
+
+    cursor.execute("""
+        SELECT COUNT(*) AS total
+        FROM borrow_records
+        WHERE return_date IS NOT NULL
+        AND return_date > due_date
+    """)
+
+    late_returns = cursor.fetchone()["total"]
+
+    current_overdue = overdue
+
+    # -----------------------------
+    # AVERAGE LATE DAYS
+    # -----------------------------
+
+    cursor.execute("""
+        SELECT
+            COALESCE(
+                AVG(DATEDIFF(return_date, due_date)),
+                0
+            ) AS average_days
+        FROM borrow_records
+        WHERE return_date IS NOT NULL
+        AND return_date > due_date
+    """)
+
+    average_result = cursor.fetchone()
+
+    avg_late_days = round(
+        float(
+            average_result["average_days"] or 0
+        ),
+        1
+    )
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "dashboard.html",
+
+        total_books=total_books,
+        available=available,
+        borrowed=borrowed,
+        total_members=total_members,
+        overdue=overdue,
+        total_fine=total_fine,
+        low_stock_count=low_stock_count,
+
+        low_stock_books=low_stock_books,
+        recent_activity=recent_activity,
+        most_active_members=most_active_members,
+
+        # Dashboard aliases
+        low_stock=low_stock_books,
+        recent=recent_activity,
+        active_members=most_active_members,
+
+        monthly_borrowing=monthly_borrowing,
+        books_by_category=books_by_category,
+        most_borrowed=most_borrowed,
+
+        returned_count=returned_count,
+        on_time_returns=on_time_returns,
+        late_returns=late_returns,
+        current_overdue=current_overdue,
+        avg_late_days=avg_late_days
+    )
+
+
+# =========================================================
+# LOGIN
+# =========================================================
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        try:
+            cursor.execute(
+                """
+                SELECT id, username, password, role
+                FROM users
+                WHERE username = %s
+                """,
+                (username,)
+            )
+
+            user = cursor.fetchone()
+
+            if not user:
+                flash("Invalid username or password.", "danger")
+                return render_template("login.html")
+
+            stored_password = str(user["password"])
+
+            # Support both old plain-text passwords
+            # and new hashed passwords
+            password_valid = False
+
+            # Check old existing password
+            if stored_password == password:
+                password_valid = True
+            else:
+                # Check hashed password
+                try:
+                    password_valid = check_password_hash(
+                        stored_password,
+                        password
+                    )
+                except (ValueError, TypeError):
+                    password_valid = False
+
+            if password_valid:
+                session.clear()
+
+                session["user_id"] = user["id"]
+                session["username"] = user["username"]
+                session["role"] = user["role"]
+                session.permanent = True
+
+                flash("Login successful.", "success")
+
+                return redirect(
+                    url_for("dashboard")
+                )
+
+            flash(
+                "Invalid username or password.",
+                "danger"
+            )
+
+        except mysql.connector.Error as e:
+            flash(
+                f"Database error: {e}",
+                "danger"
+            )
+
+        finally:
+            cursor.close()
+            conn.close()
+
+    return render_template("login.html")
+
+
 
 
 # =========================================================
@@ -635,17 +691,39 @@ def books():
 # =========================================================
 # ADD BOOK
 # =========================================================
-@app.route("/books/add", methods=["GET", "POST"])
+@app.route(
+    "/books/add",
+    methods=["GET", "POST"]
+)
 @login_required
 def add_book():
 
     if request.method == "POST":
 
-        title = request.form["title"].strip()
-        author = request.form["author"].strip()
-        isbn = request.form["isbn"].strip()
-        category = request.form["category"].strip()
-        quantity = request.form["quantity"]
+        title = request.form.get(
+            "title",
+            ""
+        ).strip()
+
+        author = request.form.get(
+            "author",
+            ""
+        ).strip()
+
+        isbn = request.form.get(
+            "isbn",
+            ""
+        ).strip()
+
+        category = request.form.get(
+            "category",
+            ""
+        ).strip()
+
+        quantity = request.form.get(
+            "quantity",
+            0
+        )
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -654,8 +732,21 @@ def add_book():
 
             cursor.execute("""
                 INSERT INTO books
-                (title, author, isbn, category, quantity)
-                VALUES (%s, %s, %s, %s, %s)
+                (
+                    title,
+                    author,
+                    isbn,
+                    category,
+                    quantity
+                )
+                VALUES
+                (
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s
+                )
             """, (
                 title,
                 author,
@@ -709,15 +800,35 @@ def edit_book(book_id):
 
     if request.method == "POST":
 
-        title = request.form["title"]
-        author = request.form["author"]
-        isbn = request.form["isbn"]
-        category = request.form["category"]
-        quantity = request.form["quantity"]
+        title = request.form.get(
+            "title",
+            ""
+        ).strip()
+
+        author = request.form.get(
+            "author",
+            ""
+        ).strip()
+
+        isbn = request.form.get(
+            "isbn",
+            ""
+        ).strip()
+
+        category = request.form.get(
+            "category",
+            ""
+        ).strip()
+
+        quantity = request.form.get(
+            "quantity",
+            0
+        )
 
         cursor.execute("""
             UPDATE books
-            SET title = %s,
+            SET
+                title = %s,
                 author = %s,
                 isbn = %s,
                 category = %s,
@@ -767,8 +878,7 @@ def edit_book(book_id):
 # DELETE BOOK
 # =========================================================
 @app.route(
-    "/books/delete/<int:book_id>",
-    methods=["GET", "POST"]
+    "/books/delete/<int:book_id>"
 )
 @login_required
 def delete_book(book_id):
@@ -839,7 +949,10 @@ def members():
 # =========================================================
 # ADD MEMBER
 # =========================================================
-@app.route("/members/add", methods=["GET", "POST"])
+@app.route(
+    "/members/add",
+    methods=["GET", "POST"]
+)
 @login_required
 def add_member():
 
@@ -860,117 +973,34 @@ def add_member():
             ""
         ).strip()
 
-        # ---------------------------------------------
-        # BASIC VALIDATION
-        # ---------------------------------------------
-        if not fullname:
-
-            flash(
-                "Full name is required.",
-                "danger"
-            )
-
-            return redirect(
-                url_for("add_member")
-            )
-
-        if not email and not phone:
-
-            flash(
-                "Please provide an email address or phone number.",
-                "danger"
-            )
-
-            return redirect(
-                url_for("add_member")
-            )
-
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
 
         try:
 
-            # -----------------------------------------
-            # CHECK FOR DUPLICATE MEMBER
-            # -----------------------------------------
-            duplicate_conditions = []
-            duplicate_values = []
-
-            if email:
-                duplicate_conditions.append(
-                    "email = %s"
-                )
-                duplicate_values.append(email)
-
-            if phone:
-                duplicate_conditions.append(
-                    "phone = %s"
-                )
-                duplicate_values.append(phone)
-
-            existing_member = None
-
-            if duplicate_conditions:
-
-                query = f"""
-                    SELECT
-                        id,
-                        fullname,
-                        email,
-                        phone
-                    FROM members
-                    WHERE {" OR ".join(duplicate_conditions)}
-                    LIMIT 1
-                """
-
-                cursor.execute(
-                    query,
-                    tuple(duplicate_values)
-                )
-
-                existing_member = cursor.fetchone()
-
-            # -----------------------------------------
-            # DUPLICATE FOUND
-            # -----------------------------------------
-            if existing_member:
-
-                duplicate_field = "email or phone"
-
-                if email and existing_member["email"] == email:
-                    duplicate_field = "email"
-
-                elif phone and existing_member["phone"] == phone:
-                    duplicate_field = "phone"
-
-                flash(
-                    f"Member already exists. "
-                    f"The {duplicate_field} belongs to "
-                    f"{existing_member['fullname']}.",
-                    "warning"
-                )
-
-                return redirect(
-                    url_for("members")
-                )
-
-            # -----------------------------------------
-            # INSERT MEMBER
-            # -----------------------------------------
             cursor.execute("""
                 INSERT INTO members
-                (fullname, email, phone)
-                VALUES (%s, %s, %s)
+                (
+                    fullname,
+                    email,
+                    phone
+                )
+                VALUES
+                (
+                    %s,
+                    %s,
+                    %s
+                )
             """, (
                 fullname,
-                email if email else None,
-                phone if phone else None
+                email,
+                phone
             ))
 
             conn.commit()
 
             flash(
-                f"Member '{fullname}' added successfully.",
+                "Member added successfully.",
                 "success"
             )
 
@@ -1027,77 +1057,17 @@ def edit_member(member_id):
             ""
         ).strip()
 
-        # ---------------------------------------------
-        # CHECK FOR DUPLICATE EMAIL OR PHONE
-        # EXCLUDING CURRENT MEMBER
-        # ---------------------------------------------
-        if email or phone:
-
-            conditions = []
-            values = []
-
-            if email:
-                conditions.append(
-                    "email = %s"
-                )
-                values.append(email)
-
-            if phone:
-                conditions.append(
-                    "phone = %s"
-                )
-                values.append(phone)
-
-            query = f"""
-                SELECT
-                    id,
-                    fullname,
-                    email,
-                    phone
-                FROM members
-                WHERE id != %s
-                AND ({" OR ".join(conditions)})
-                LIMIT 1
-            """
-
-            cursor.execute(
-                query,
-                (member_id, *values)
-            )
-
-            duplicate = cursor.fetchone()
-
-            if duplicate:
-
-                cursor.close()
-                conn.close()
-
-                flash(
-                    "Another member already uses "
-                    "that email or phone number.",
-                    "warning"
-                )
-
-                return redirect(
-                    url_for(
-                        "edit_member",
-                        member_id=member_id
-                    )
-                )
-
-        # ---------------------------------------------
-        # UPDATE MEMBER
-        # ---------------------------------------------
         cursor.execute("""
             UPDATE members
-            SET fullname = %s,
+            SET
+                fullname = %s,
                 email = %s,
                 phone = %s
             WHERE id = %s
         """, (
             fullname,
-            email if email else None,
-            phone if phone else None,
+            email,
+            phone,
             member_id
         ))
 
@@ -1115,9 +1085,6 @@ def edit_member(member_id):
             url_for("members")
         )
 
-    # ---------------------------------------------
-    # GET MEMBER
-    # ---------------------------------------------
     cursor.execute("""
         SELECT *
         FROM members
@@ -1129,17 +1096,6 @@ def edit_member(member_id):
     cursor.close()
     conn.close()
 
-    if not member:
-
-        flash(
-            "Member not found.",
-            "danger"
-        )
-
-        return redirect(
-            url_for("members")
-        )
-
     return render_template(
         "edit_member.html",
         member=member
@@ -1150,73 +1106,16 @@ def edit_member(member_id):
 # DELETE MEMBER
 # =========================================================
 @app.route(
-    "/members/delete/<int:member_id>",
-    methods=["POST"]
+    "/members/delete/<int:member_id>"
 )
 @login_required
 def delete_member(member_id):
 
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
 
     try:
 
-        # ---------------------------------------------
-        # CHECK MEMBER EXISTS
-        # ---------------------------------------------
-        cursor.execute("""
-            SELECT
-                id,
-                fullname
-            FROM members
-            WHERE id = %s
-        """, (member_id,))
-
-        member = cursor.fetchone()
-
-        if not member:
-
-            flash(
-                "Member not found.",
-                "danger"
-            )
-
-            return redirect(
-                url_for("members")
-            )
-
-        # ---------------------------------------------
-        # CHECK BORROWING HISTORY
-        # ---------------------------------------------
-        cursor.execute("""
-            SELECT COUNT(*) AS total
-            FROM borrow_records
-            WHERE member_id = %s
-        """, (member_id,))
-
-        result = cursor.fetchone()
-        borrow_count = result["total"]
-
-        # ---------------------------------------------
-        # PROTECT BORROWING HISTORY
-        # ---------------------------------------------
-        if borrow_count > 0:
-
-            flash(
-                f"Cannot delete {member['fullname']} "
-                f"because they have {borrow_count} "
-                f"borrowing record(s). "
-                f"Their library history must be preserved.",
-                "warning"
-            )
-
-            return redirect(
-                url_for("members")
-            )
-
-        # ---------------------------------------------
-        # DELETE MEMBER
-        # ---------------------------------------------
         cursor.execute("""
             DELETE FROM members
             WHERE id = %s
@@ -1225,7 +1124,7 @@ def delete_member(member_id):
         conn.commit()
 
         flash(
-            f"Member '{member['fullname']}' deleted successfully.",
+            "Member deleted successfully.",
             "success"
         )
 
@@ -1263,15 +1162,20 @@ def borrow_book():
 
     if request.method == "POST":
 
-        member_id = request.form["member_id"]
-        book_id = request.form["book_id"]
-        due_date = request.form["due_date"]
+        member_id = request.form.get(
+            "member_id"
+        )
+
+        book_id = request.form.get(
+            "book_id"
+        )
+
+        due_date = request.form.get(
+            "due_date"
+        )
 
         try:
 
-            # -----------------------------------------
-            # CHECK BOOK
-            # -----------------------------------------
             cursor.execute("""
                 SELECT *
                 FROM books
@@ -1296,9 +1200,6 @@ def borrow_book():
 
             else:
 
-                # -------------------------------------
-                # CHECK MEMBER
-                # -------------------------------------
                 cursor.execute("""
                     SELECT *
                     FROM members
@@ -1316,9 +1217,6 @@ def borrow_book():
 
                 else:
 
-                    # ---------------------------------
-                    # CREATE BORROW RECORD
-                    # ---------------------------------
                     cursor.execute("""
                         INSERT INTO borrow_records
                         (
@@ -1342,9 +1240,6 @@ def borrow_book():
                         due_date
                     ))
 
-                    # ---------------------------------
-                    # REDUCE STOCK
-                    # ---------------------------------
                     cursor.execute("""
                         UPDATE books
                         SET quantity = quantity - 1
@@ -1374,9 +1269,10 @@ def borrow_book():
                 "danger"
             )
 
-    # ---------------------------------------------
-    # GET AVAILABLE BOOKS
-    # ---------------------------------------------
+    # -----------------------------
+    # AVAILABLE BOOKS
+    # -----------------------------
+
     cursor.execute("""
         SELECT *
         FROM books
@@ -1386,9 +1282,10 @@ def borrow_book():
 
     books_list = cursor.fetchall()
 
-    # ---------------------------------------------
-    # GET MEMBERS
-    # ---------------------------------------------
+    # -----------------------------
+    # MEMBERS
+    # -----------------------------
+
     cursor.execute("""
         SELECT *
         FROM members
@@ -1447,7 +1344,9 @@ def borrowed_books():
 # =========================================================
 # RETURN BOOK
 # =========================================================
-@app.route("/return/<int:record_id>")
+@app.route(
+    "/return/<int:record_id>"
+)
 @login_required
 def return_book(record_id):
 
@@ -1482,7 +1381,8 @@ def return_book(record_id):
 
             cursor.execute("""
                 UPDATE borrow_records
-                SET return_date = CURDATE(),
+                SET
+                    return_date = CURDATE(),
                     status = 'Returned'
                 WHERE id = %s
             """, (record_id,))
@@ -1668,7 +1568,9 @@ def fines():
 # =========================================================
 # PAY FINE
 # =========================================================
-@app.route("/fines/pay/<int:record_id>")
+@app.route(
+    "/fines/pay/<int:record_id>"
+)
 @login_required
 def pay_fine(record_id):
 
@@ -1787,6 +1689,8 @@ def search():
 
     if query:
 
+        search_value = f"%{query}%"
+
         cursor.execute("""
             SELECT *
             FROM books
@@ -1796,10 +1700,10 @@ def search():
                OR category LIKE %s
             ORDER BY title
         """, (
-            f"%{query}%",
-            f"%{query}%",
-            f"%{query}%",
-            f"%{query}%"
+            search_value,
+            search_value,
+            search_value,
+            search_value
         ))
 
     else:
@@ -1837,6 +1741,8 @@ def book_suggestions():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
+    search_value = f"%{query}%"
+
     cursor.execute("""
         SELECT
             id,
@@ -1851,9 +1757,9 @@ def book_suggestions():
         ORDER BY title
         LIMIT 10
     """, (
-        f"%{query}%",
-        f"%{query}%",
-        f"%{query}%"
+        search_value,
+        search_value,
+        search_value
     ))
 
     books_list = cursor.fetchall()
@@ -1880,7 +1786,9 @@ def profile():
         SELECT *
         FROM users
         WHERE id = %s
-    """, (session["user_id"],))
+    """, (
+        session["user_id"],
+    ))
 
     user = cursor.fetchone()
 
@@ -1894,7 +1802,7 @@ def profile():
 
 
 # =========================================================
-# ERROR PAGES
+# ERROR HANDLERS
 # =========================================================
 @app.errorhandler(404)
 def page_not_found(error):
@@ -1917,3 +1825,4 @@ def internal_server_error(error):
 # =========================================================
 if __name__ == "__main__":
     app.run(debug=True)
+
