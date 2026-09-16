@@ -694,11 +694,86 @@ def add_member():
             ""
         ).strip()
 
+        # ---------------------------------------------
+        # BASIC VALIDATION
+        # ---------------------------------------------
+        if not fullname:
+            flash(
+                "Please enter the member's full name.",
+                "danger"
+            )
+            return redirect(url_for("add_member"))
+
+        if not email:
+            flash(
+                "Please enter the member's email.",
+                "danger"
+            )
+            return redirect(url_for("add_member"))
+
+        if not phone:
+            flash(
+                "Please enter the member's phone number.",
+                "danger"
+            )
+            return redirect(url_for("add_member"))
+
         conn = get_db_connection()
         cursor = conn.cursor()
 
         try:
 
+            # -----------------------------------------
+            # CHECK FOR DUPLICATE EMAIL OR PHONE
+            # -----------------------------------------
+            cursor.execute("""
+                SELECT id, fullname, email, phone
+                FROM members
+                WHERE email = %s
+                   OR phone = %s
+                LIMIT 1
+            """, (
+                email,
+                phone
+            ))
+
+            existing_member = cursor.fetchone()
+
+            if existing_member:
+
+                # Determine what caused the duplicate
+                existing_id = existing_member[0]
+                existing_name = existing_member[1]
+                existing_email = existing_member[2]
+                existing_phone = existing_member[3]
+
+                if existing_email == email:
+                    flash(
+                        f"A member with email '{email}' already exists "
+                        f"({existing_name}).",
+                        "warning"
+                    )
+
+                elif existing_phone == phone:
+                    flash(
+                        f"A member with phone number '{phone}' already "
+                        f"exists ({existing_name}).",
+                        "warning"
+                    )
+
+                else:
+                    flash(
+                        "This member already exists in the system.",
+                        "warning"
+                    )
+
+                return redirect(
+                    url_for("members")
+                )
+
+            # -----------------------------------------
+            # ADD NEW MEMBER
+            # -----------------------------------------
             cursor.execute("""
                 INSERT INTO members
                 (
