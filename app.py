@@ -2,21 +2,29 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from functools import wraps
 import mysql.connector
 from datetime import date, datetime
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = "library_management_secret_key"
 
-
-# =========================================================
-# DATABASE CONNECTION
-# =========================================================
 def get_db_connection():
-    return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="password",
-        database="library_management"
-    )
+    config = {
+        "host": os.getenv("DB_HOST", "localhost"),
+        "port": int(os.getenv("DB_PORT", "3306")),
+        "user": os.getenv("DB_USER", "root"),
+        "password": os.getenv("DB_PASSWORD", "password"),
+        "database": os.getenv("DB_NAME", "library_management"),
+    }
+
+    ssl_ca = os.getenv("DB_SSL_CA")
+
+    if ssl_ca:
+        config["ssl_ca"] = ssl_ca
+
+    return mysql.connector.connect(**config)
 
 
 # =========================================================
