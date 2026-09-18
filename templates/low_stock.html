@@ -1,178 +1,102 @@
-```html
 {% extends "base.html" %}
 
-{% block page_title %}Low Stock Books{% endblock %}
+{% block page_title %}Low Stock{% endblock %}
 
 {% block content %}
 
 <div class="container-fluid">
 
-    <!-- PAGE HEADER -->
     <div class="d-flex justify-content-between align-items-center mb-4">
 
         <div>
             <h4>
-                <i class="bi bi-exclamation-triangle text-danger"></i>
+                <i class="bi bi-exclamation-triangle"></i>
                 Low Stock Books
             </h4>
-
             <p class="text-muted mb-0">
-                Books that have reached or fallen below the minimum stock level.
+                Books with low available quantities
             </p>
         </div>
 
-        <a href="{{ url_for('books') }}" class="btn btn-primary">
-            <i class="bi bi-book"></i>
-            View All Books
-        </a>
+        <div class="d-flex gap-2">
+
+            <button onclick="window.print()" class="btn btn-dark no-print">
+                <i class="bi bi-printer"></i>
+                Print
+            </button>
+
+            <button onclick="exportTableToCSV('lowStockTable', 'low_stock_report')" class="btn btn-success no-print">
+                <i class="bi bi-download"></i>
+                Download CSV
+            </button>
+
+        </div>
 
     </div>
 
+    <div class="d-none d-print-block text-center mb-4">
+        <h3>Library Management System</h3>
+        <h5>Low Stock Report</h5>
+        <p class="text-muted">Total Low Stock Books: {{ books|length if books else 0 }}</p>
+        <hr>
+    </div>
 
     {% if books %}
 
-    <!-- LOW STOCK TABLE -->
     <div class="card shadow-sm">
-
-        <div class="card-header bg-danger text-white">
-            <i class="bi bi-exclamation-triangle"></i>
-            Books Requiring Restocking
+        <div class="card-header bg-secondary text-white">
+            <strong><i class="bi bi-exclamation-triangle"></i> Low Stock Books</strong>
+            <span class="badge bg-light text-dark float-end">{{ books|length }} Records</span>
         </div>
-
         <div class="card-body">
-
             <div class="table-responsive">
-
-                <table class="table table-hover align-middle">
-
-                    <thead class="table-light">
-
+                <table class="table table-hover align-middle" id="lowStockTable">
+                    <thead class="table-dark">
                         <tr>
                             <th>#</th>
-                            <th>Book Title</th>
+                            <th>Title</th>
                             <th>Author</th>
                             <th>ISBN</th>
                             <th>Category</th>
                             <th>Quantity</th>
-                            <th>Stock Status</th>
-                            <th>Action</th>
+                            <th class="no-print">Actions</th>
                         </tr>
-
                     </thead>
-
                     <tbody>
-
                         {% for book in books %}
-
                         <tr>
-
+                            <td>{{ loop.index }}</td>
+                            <td><strong>{{ book.title }}</strong></td>
+                            <td>{{ book.author }}</td>
+                            <td>{{ book.isbn }}</td>
+                            <td>{{ book.category }}</td>
                             <td>
-                                {{ loop.index }}
+                                <span class="badge bg-danger">
+                                    {{ book.quantity }} left
+                                </span>
                             </td>
-
-                            <td>
-                                <strong>{{ book.title }}</strong>
-                            </td>
-
-                            <td>
-                                {{ book.author }}
-                            </td>
-
-                            <td>
-                                {{ book.isbn }}
-                            </td>
-
-                            <td>
-                                {{ book.category }}
-                            </td>
-
-                            <td>
-                                <strong class="text-danger">
-                                    {{ book.quantity }}
-                                </strong>
-                            </td>
-
-                            <td>
-
-                                {% if book.quantity == 0 %}
-
-                                    <span class="badge bg-dark">
-                                        Out of Stock
-                                    </span>
-
-                                {% elif book.quantity == 1 %}
-
-                                    <span class="badge bg-danger">
-                                        Critical
-                                    </span>
-
-                                {% else %}
-
-                                    <span class="badge bg-warning text-dark">
-                                        Low Stock
-                                    </span>
-
-                                {% endif %}
-
-                            </td>
-
-                            <td>
-
-                                <a
-                                    href="{{ url_for('edit_book', book_id=book.id) }}"
-                                    class="btn btn-sm btn-primary"
-                                >
+                            <td class="no-print">
+                                <a href="{{ url_for('edit_book', book_id=book.id) }}" class="btn btn-sm btn-warning">
                                     <i class="bi bi-pencil"></i>
-                                    Update Stock
+                                    Restock
                                 </a>
-
                             </td>
-
                         </tr>
-
                         {% endfor %}
-
                     </tbody>
-
                 </table>
-
             </div>
-
         </div>
-
     </div>
 
     {% else %}
 
-    <!-- NO LOW STOCK BOOKS -->
-
     <div class="card shadow-sm">
-
         <div class="card-body text-center py-5">
-
-            <i
-                class="bi bi-check-circle text-success"
-                style="font-size: 60px;"
-            ></i>
-
-            <h4 class="mt-3">
-                Stock Levels Are Good
-            </h4>
-
-            <p class="text-muted">
-                There are currently no books with low stock.
-            </p>
-
-            <a
-                href="{{ url_for('books') }}"
-                class="btn btn-primary"
-            >
-                <i class="bi bi-book"></i>
-                View Books
-            </a>
-
+            <i class="bi bi-check-circle text-success" style="font-size: 60px;"></i>
+            <h4 class="mt-3">No Low Stock Books</h4>
+            <p class="text-muted">All books have sufficient quantity.</p>
         </div>
-
     </div>
 
     {% endif %}
@@ -180,4 +104,3 @@
 </div>
 
 {% endblock %}
-```

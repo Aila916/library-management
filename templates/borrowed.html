@@ -10,24 +10,27 @@
 
         <div>
             <h4>
-                <i class="bi bi-book-half"></i> Borrowed Books
+                <i class="bi bi-bookmark-check"></i>
+                Borrowed Books
             </h4>
-
             <p class="text-muted mb-0">
-                View books currently borrowed by library members.
+                Currently borrowed books
             </p>
         </div>
 
-        <div>
+        <div class="d-flex gap-2">
 
-            <a href="{{ url_for('overdue_books') }}"
-               class="btn btn-outline-danger me-2">
-                <i class="bi bi-exclamation-triangle"></i>
-                Overdue Books
-            </a>
+            <button onclick="window.print()" class="btn btn-dark no-print">
+                <i class="bi bi-printer"></i>
+                Print
+            </button>
 
-            <a href="{{ url_for('borrow_book') }}"
-               class="btn btn-primary">
+            <button onclick="exportTableToCSV('borrowedTable', 'borrowed_books')" class="btn btn-success no-print">
+                <i class="bi bi-download"></i>
+                Download CSV
+            </button>
+
+            <a href="{{ url_for('borrow_book') }}" class="btn btn-primary no-print">
                 <i class="bi bi-plus-circle"></i>
                 Borrow Book
             </a>
@@ -36,178 +39,79 @@
 
     </div>
 
+    <div class="d-none d-print-block text-center mb-4">
+        <h3>Library Management System</h3>
+        <h5>Borrowed Books Report</h5>
+        <p class="text-muted">Total Borrowed: {{ records|length if records else 0 }}</p>
+        <hr>
+    </div>
 
     {% if records %}
 
     <div class="card shadow-sm">
-
-        <div class="card-header bg-white">
-
-            <div class="d-flex justify-content-between align-items-center">
-
-                <strong>
-                    <i class="bi bi-journal-bookmark"></i>
-                    Current Borrowing
-                </strong>
-
-                <span class="badge bg-primary">
-                    {{ records|length }} Books
-                </span>
-
-            </div>
-
+        <div class="card-header">
+            <strong><i class="bi bi-bookmark-check"></i> Currently Borrowed</strong>
+            <span class="badge bg-warning text-dark float-end">{{ records|length }} Records</span>
         </div>
-
-
         <div class="card-body">
-
             <div class="table-responsive">
-
-                <table class="table table-hover align-middle">
-
+                <table class="table table-hover align-middle" id="borrowedTable">
                     <thead class="table-dark">
-
                         <tr>
                             <th>#</th>
                             <th>Member</th>
-                            <th>Email</th>
                             <th>Book</th>
                             <th>Author</th>
                             <th>Borrow Date</th>
                             <th>Due Date</th>
                             <th>Status</th>
-                            <th>Action</th>
+                            <th class="no-print">Actions</th>
                         </tr>
-
                     </thead>
-
-
                     <tbody>
-
                         {% for record in records %}
-
                         <tr>
-
+                            <td>{{ loop.index }}</td>
+                            <td><strong>{{ record.member_name }}</strong></td>
+                            <td>{{ record.book_title }}</td>
+                            <td>{{ record.author }}</td>
+                            <td>{{ record.borrow_date }}</td>
+                            <td>{{ record.due_date }}</td>
                             <td>
-                                {{ loop.index }}
-                            </td>
-
-
-                            <td>
-                                <strong>
-                                    {{ record.member_name }}
-                                </strong>
-                            </td>
-
-
-                            <td>
-                                {{ record.email }}
-                            </td>
-
-
-                            <td>
-                                <strong>
-                                    {{ record.book_title }}
-                                </strong>
-                            </td>
-
-
-                            <td>
-                                {{ record.author }}
-                            </td>
-
-
-                            <td>
-                                {{ record.borrow_date }}
-                            </td>
-
-
-                            <td>
-                                {{ record.due_date }}
-                            </td>
-
-
-                            <td>
-
-                                {% if record.status == 'Borrowed' %}
-
-                                    <span class="badge bg-warning text-dark">
-                                        <i class="bi bi-clock"></i>
-                                        Borrowed
-                                    </span>
-
+                                {% if record.due_date < today %}
+                                    <span class="badge bg-danger">Overdue</span>
                                 {% else %}
-
-                                    <span class="badge bg-secondary">
-                                        {{ record.status }}
-                                    </span>
-
+                                    <span class="badge bg-warning text-dark">Borrowed</span>
                                 {% endif %}
-
                             </td>
-
-
-                            <td>
-
-                                <a
-                                    href="{{ url_for('return_book', record_id=record.id) }}"
-                                    class="btn btn-sm btn-success"
-                                    onclick="return confirm('Are you sure you want to return this book?');"
-                                >
-
-                                    <i class="bi bi-arrow-return-left"></i>
+                            <td class="no-print">
+                                <a href="{{ url_for('return_book', record_id=record.id) }}" 
+                                   class="btn btn-sm btn-success"
+                                   onclick="return confirm('Confirm return of this book?')">
+                                    <i class="bi bi-check-circle"></i>
                                     Return
-
                                 </a>
-
                             </td>
-
                         </tr>
-
                         {% endfor %}
-
                     </tbody>
-
                 </table>
-
             </div>
-
         </div>
-
     </div>
-
 
     {% else %}
 
     <div class="card shadow-sm">
-
         <div class="card-body text-center py-5">
-
-            <i
-                class="bi bi-journal-x text-muted"
-                style="font-size: 60px;"
-            ></i>
-
-            <h5 class="mt-3">
-                No Borrowed Books
-            </h5>
-
-            <p class="text-muted">
-                There are currently no books borrowed by members.
-            </p>
-
-            <a
-                href="{{ url_for('borrow_book') }}"
-                class="btn btn-primary"
-            >
-
-                <i class="bi bi-plus-circle"></i>
+            <i class="bi bi-bookmark text-muted" style="font-size: 60px;"></i>
+            <h4 class="mt-3">No Borrowed Books</h4>
+            <p class="text-muted">No books are currently borrowed.</p>
+            <a href="{{ url_for('borrow_book') }}" class="btn btn-primary">
+                <i class="bi bi-book"></i>
                 Borrow a Book
-
             </a>
-
         </div>
-
     </div>
 
     {% endif %}

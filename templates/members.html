@@ -1,122 +1,111 @@
-```html
 {% extends "base.html" %}
 
 {% block page_title %}Members{% endblock %}
 
 {% block content %}
 
-<div class="table-container">
+<div class="container-fluid">
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
 
-        <h5>
-            <i class="bi bi-people"></i> Library Members
-        </h5>
+        <div>
+            <h4>
+                <i class="bi bi-people"></i>
+                Members
+            </h4>
+            <p class="text-muted mb-0">
+                Registered library members
+            </p>
+        </div>
 
-        <a href="{{ url_for('add_member') }}"
-           class="btn btn-primary btn-sm">
+        <div class="d-flex gap-2">
 
-            <i class="bi bi-person-plus"></i>
-            Add Member
+            <button onclick="window.print()" class="btn btn-dark no-print">
+                <i class="bi bi-printer"></i>
+                Print
+            </button>
 
-        </a>
+            <button onclick="exportTableToCSV('membersTable', 'members_report')" class="btn btn-success no-print">
+                <i class="bi bi-download"></i>
+                Download CSV
+            </button>
 
-    </div>
+            <a href="{{ url_for('add_member') }}" class="btn btn-primary no-print">
+                <i class="bi bi-plus-circle"></i>
+                Add Member
+            </a>
 
-
-    <div class="table-responsive">
-
-        <table class="table table-hover">
-
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Full Name</th>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-
-
-            <tbody>
-
-                {% for member in members %}
-
-                <tr>
-
-                    <td>{{ loop.index }}</td>
-
-                    <td>
-                        <strong>{{ member.fullname }}</strong>
-                    </td>
-
-                    <td>
-                        {{ member.email or '-' }}
-                    </td>
-
-                    <td>
-                        {{ member.phone or '-' }}
-                    </td>
-
-                    <td>
-
-                        <!-- EDIT MEMBER -->
-                        <a href="{{ url_for('edit_member', member_id=member.id) }}"
-                           class="btn btn-sm btn-outline-primary"
-                           title="Edit Member">
-
-                            <i class="bi bi-pencil"></i>
-
-                        </a>
-
-
-                        <!-- DELETE MEMBER -->
-                        <form method="POST"
-                              action="{{ url_for('delete_member', member_id=member.id) }}"
-                              style="display:inline;"
-                              onsubmit="return confirm('Are you sure you want to delete this member?');">
-
-                            <button type="submit"
-                                    class="btn btn-sm btn-outline-danger"
-                                    title="Delete Member">
-
-                                <i class="bi bi-trash"></i>
-
-                            </button>
-
-                        </form>
-
-                    </td>
-
-                </tr>
-
-                {% else %}
-
-                <tr>
-
-                    <td colspan="5"
-                        class="text-center text-muted py-4">
-
-                        <i class="bi bi-people fs-2"></i>
-
-                        <p class="mt-2 mb-0">
-                            No members registered yet.
-                        </p>
-
-                    </td>
-
-                </tr>
-
-                {% endfor %}
-
-            </tbody>
-
-        </table>
+        </div>
 
     </div>
+
+    <div class="d-none d-print-block text-center mb-4">
+        <h3>Library Management System</h3>
+        <h5>Members Report</h5>
+        <p class="text-muted">Total Members: {{ members|length if members else 0 }}</p>
+        <hr>
+    </div>
+
+    {% if members %}
+
+    <div class="card shadow-sm">
+        <div class="card-header">
+            <strong><i class="bi bi-people"></i> All Members</strong>
+            <span class="badge bg-primary float-end">{{ members|length }} Members</span>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle" id="membersTable">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>#</th>
+                            <th>Full Name</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th class="no-print">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for member in members %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td><strong>{{ member.fullname }}</strong></td>
+                            <td>{{ member.email }}</td>
+                            <td>{{ member.phone }}</td>
+                            <td class="no-print">
+                                <a href="{{ url_for('edit_member', member_id=member.id) }}" class="btn btn-sm btn-warning">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <a href="{{ url_for('delete_member', member_id=member.id) }}" 
+                                   class="btn btn-sm btn-danger"
+                                   onclick="return confirm('Delete this member?')">
+                                    <i class="bi bi-trash"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+
+    <div class="card shadow-sm">
+        <div class="card-body text-center py-5">
+            <i class="bi bi-people text-muted" style="font-size: 60px;"></i>
+            <h4 class="mt-3">No Members</h4>
+            <p class="text-muted">No members have been registered yet.</p>
+            <a href="{{ url_for('add_member') }}" class="btn btn-primary">
+                <i class="bi bi-plus-circle"></i>
+                Register First Member
+            </a>
+        </div>
+    </div>
+
+    {% endif %}
 
 </div>
 
 {% endblock %}
-```

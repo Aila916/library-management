@@ -1,4 +1,4 @@
-```html
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -424,21 +424,29 @@
 
     <!-- REPORTS & ANALYTICS -->
 
-    <div class="sidebar-section">
-        Reports & Analytics
-    </div>
+<div class="sidebar-section">
+    Reports & Analytics
+</div>
 
-    <nav class="nav flex-column">
+<nav class="nav flex-column">
 
-        <a href="{{ url_for('dashboard') }}"
-           class="nav-link">
+    <a href="{{ url_for('reports') }}"
+       class="nav-link">
 
-            <i class="bi bi-graph-up"></i>
-            Analytics
+        <i class="bi bi-file-earmark-bar-graph"></i>
+        Reports
 
-        </a>
+    </a>
 
-    </nav>
+    <a href="{{ url_for('dashboard') }}"
+       class="nav-link">
+
+        <i class="bi bi-graph-up"></i>
+        Analytics
+
+    </a>
+
+</nav>
 
     <!-- ACCOUNT -->
 
@@ -691,4 +699,3 @@
 </body>
 
 </html>
-```

@@ -20,11 +20,27 @@
             </p>
         </div>
 
-        <div>
+        <div class="d-flex gap-2">
+
+            <button
+                onclick="window.print()"
+                class="btn btn-dark no-print"
+            >
+                <i class="bi bi-printer"></i>
+                Print
+            </button>
+
+            <button
+                onclick="exportTableToCSV('historyTable', 'borrowing_history')"
+                class="btn btn-success no-print"
+            >
+                <i class="bi bi-download"></i>
+                Download CSV
+            </button>
 
             <a
                 href="{{ url_for('borrow_book') }}"
-                class="btn btn-primary"
+                class="btn btn-primary no-print"
             >
                 <i class="bi bi-plus-circle"></i>
                 Borrow Book
@@ -32,7 +48,7 @@
 
             <a
                 href="{{ url_for('dashboard') }}"
-                class="btn btn-outline-secondary"
+                class="btn btn-outline-secondary no-print"
             >
                 <i class="bi bi-speedometer2"></i>
                 Dashboard
@@ -40,6 +56,17 @@
 
         </div>
 
+    </div>
+
+
+    <!-- PRINT HEADER (visible only when printing) -->
+    <div class="d-none d-print-block text-center mb-4">
+        <h3>Library Management System</h3>
+        <h5>Borrowing History Report</h5>
+        <p class="text-muted">
+            Total Records: {{ history|length if history else 0 }}
+        </p>
+        <hr>
     </div>
 
 
@@ -66,7 +93,7 @@
 
             <div class="table-responsive">
 
-                <table class="table table-hover align-middle">
+                <table class="table table-hover align-middle" id="historyTable">
 
                     <thead class="table-dark">
 
