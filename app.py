@@ -4,7 +4,8 @@ import mysql.connector
 from datetime import date, datetime
 import os
 from werkzeug.security import generate_password_hash, check_password_hash
-
+from dotenv import load_dotenv
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -567,17 +568,57 @@ def add_member():
         email = request.form.get("email", "").strip()
         phone = request.form.get("phone", "").strip()
 
+        # -----------------------------
+        # VALIDATE INPUT
+        # -----------------------------
+        if not fullname:
+            flash("Full name is required.", "danger")
+            return render_template("add_member.html")
+
+        if not email and not phone:
+            flash("Please provide either email or phone.", "danger")
+            return render_template("add_member.html")
+
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
 
         try:
+            # -----------------------------
+            # CHECK FOR DUPLICATE MEMBER
+            # -----------------------------
+            duplicate = None
+
+            if email:
+                cursor.execute(
+                    "SELECT id, fullname FROM members WHERE email = %s",
+                    (email,)
+                )
+                duplicate = cursor.fetchone()
+
+            if not duplicate and phone:
+                cursor.execute(
+                    "SELECT id, fullname FROM members WHERE phone = %s",
+                    (phone,)
+                )
+                duplicate = cursor.fetchone()
+
+            if duplicate:
+                flash(
+                    f"Member already exists: {duplicate['fullname']}",
+                    "warning"
+                )
+                return render_template("add_member.html")
+
+            # -----------------------------
+            # INSERT NEW MEMBER
+            # -----------------------------
             cursor.execute("""
                 INSERT INTO members (fullname, email, phone)
                 VALUES (%s, %s, %s)
             """, (fullname, email, phone))
 
             conn.commit()
-            flash("Member added successfully.", "success")
+            flash(f"Member '{fullname}' added successfully.", "success")
 
         except mysql.connector.Error as e:
             conn.rollback()
