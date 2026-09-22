@@ -39,24 +39,14 @@ def get_db_connection():
         else:
             import base64
             import tempfile
-
-            ca_path = os.path.join(
-                tempfile.gettempdir(),
-                "aiven-ca.pem"
-            )
-
+            ca_path = os.path.join(tempfile.gettempdir(), "aiven-ca.pem")
             try:
                 ca_data = base64.b64decode(ssl_ca)
-
                 with open(ca_path, "wb") as ca_file:
                     ca_file.write(ca_data)
-
                 config["ssl_ca"] = ca_path
-
             except Exception as err:
-                raise RuntimeError(
-                    "Invalid Aiven CA certificate configuration."
-                ) from err
+                raise RuntimeError("Invalid Aiven CA certificate configuration.") from err
 
     return mysql.connector.connect(**config)
 
