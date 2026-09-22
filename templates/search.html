@@ -283,207 +283,96 @@ searchInput.addEventListener("input", function () {
     clearTimeout(searchTimer);
 
     if (query.length === 0) {
-
         suggestionsBox.style.display = "none";
         suggestionsBox.innerHTML = "";
-
         return;
     }
 
-
-    // Wait a little before sending request
     searchTimer = setTimeout(function () {
 
-        fetch(
-            "{{ url_for('book_suggestions') }}?q=" +
-            encodeURIComponent(query)
-        )
+        fetch("{{ url_for('book_suggestions') }}?q=" + encodeURIComponent(query))
+            .then(response => response.json())
+            .then(data => {
 
-        .then(response => response.json())
+                // ← FIX: data is an array directly
+                suggestionsBox.innerHTML = "";
 
-        .then(data => {
+                if (!data || data.length === 0) {
+                    suggestionsBox.innerHTML = `
+                        <div class="p-3 text-muted text-center">
+                            <i class="bi bi-search"></i>
+                            No matching books found
+                        </div>
+                    `;
+                    suggestionsBox.style.display = "block";
+                    return;
+                }
 
-            suggestionsBox.innerHTML = "";
+                data.forEach(function (book) {
 
-            if (
-                !data.suggestions ||
-                data.suggestions.length === 0
-            ) {
+                    const suggestion = document.createElement("a");
+                    suggestion.href = "{{ url_for('edit_book', book_id=0) }}".replace("/0", "/" + book.id);
+                    suggestion.className = "d-block text-decoration-none text-dark";
 
-                suggestionsBox.innerHTML = `
-                    <div class="p-3 text-muted text-center">
-                        <i class="bi bi-search"></i>
-                        No matching books found
-                    </div>
-                `;
+                    suggestion.innerHTML = `
+                        <div class="p-3 border-bottom" style="transition: background 0.2s;">
+                            <div class="d-flex align-items-center">
+                                <div class="bg-primary bg-opacity-10 rounded p-2 me-3">
+                                    <i class="bi bi-book text-primary fs-5"></i>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <div class="fw-bold">${escapeHtml(book.title)}</div>
+                                    <div class="small text-muted">
+                                        ${escapeHtml(book.author || "")}
+                                        <span class="mx-1">•</span>
+                                        ${escapeHtml(book.category || "N/A")}
+                                    </div>
+                                </div>
+                                <i class="bi bi-chevron-right text-muted"></i>
+                            </div>
+                        </div>
+                    `;
+
+                    suggestion.addEventListener("mouseenter", function () {
+                        this.querySelector("div").style.backgroundColor = "#f8f9fa";
+                    });
+
+                    suggestion.addEventListener("mouseleave", function () {
+                        this.querySelector("div").style.backgroundColor = "";
+                    });
+
+                    suggestionsBox.appendChild(suggestion);
+                });
 
                 suggestionsBox.style.display = "block";
-
-                return;
-            }
-
-
-            data.suggestions.forEach(function (book) {
-
-                let availabilityClass = "text-success";
-
-                if (book.quantity === 0) {
-                    availabilityClass = "text-danger";
-                }
-                else if (book.quantity <= 2) {
-                    availabilityClass = "text-warning";
-                }
-
-
-                const suggestion = document.createElement("a");
-
-                suggestion.href =
-                    "{{ url_for('edit_book', book_id=0) }}"
-                    .replace("/0", "/" + book.id);
-
-                suggestion.className =
-                    "d-block text-decoration-none text-dark";
-
-
-                suggestion.innerHTML = `
-
-                    <div
-                        class="p-3 border-bottom"
-                        style="transition: background 0.2s;"
-                    >
-
-                        <div class="d-flex align-items-center">
-
-                            <div
-                                class="bg-primary bg-opacity-10 rounded p-2 me-3"
-                            >
-                                <i class="bi bi-book text-primary fs-5"></i>
-                            </div>
-
-                            <div class="flex-grow-1">
-
-                                <div class="fw-bold">
-                                    ${escapeHtml(book.title)}
-                                </div>
-
-                                <div class="small text-muted">
-
-                                    ${escapeHtml(book.author)}
-
-                                    <span class="mx-1">•</span>
-
-                                    ${escapeHtml(book.category)}
-
-                                </div>
-
-                                <div class="small ${availabilityClass}">
-
-                                    <i class="bi bi-box-seam"></i>
-
-                                    ${escapeHtml(book.availability)}
-
-                                </div>
-
-                            </div>
-
-                            <i class="bi bi-chevron-right text-muted"></i>
-
-                        </div>
-
-                    </div>
-                `;
-
-
-                suggestion.addEventListener(
-                    "mouseenter",
-                    function () {
-                        this.querySelector("div").style.backgroundColor =
-                            "#f8f9fa";
-                    }
-                );
-
-
-                suggestion.addEventListener(
-                    "mouseleave",
-                    function () {
-                        this.querySelector("div").style.backgroundColor =
-                            "";
-                    }
-                );
-
-
-                suggestionsBox.appendChild(suggestion);
-
+            })
+            .catch(error => {
+                console.error("Search suggestion error:", error);
+                suggestionsBox.style.display = "none";
             });
 
-
-            suggestionsBox.style.display = "block";
-
-        })
-
-        .catch(error => {
-
-            console.error(
-                "Search suggestion error:",
-                error
-            );
-
-            suggestionsBox.style.display = "none";
-
-        });
-
     }, 250);
-
 });
 
-
-// =========================================================
-// HIDE SUGGESTIONS WHEN CLICKING OUTSIDE
-// =========================================================
 
 document.addEventListener("click", function (event) {
-
-    if (
-        !searchInput.contains(event.target) &&
-        !suggestionsBox.contains(event.target)
-    ) {
-
+    if (!searchInput.contains(event.target) && !suggestionsBox.contains(event.target)) {
         suggestionsBox.style.display = "none";
-
     }
-
 });
 
-
-// =========================================================
-// SHOW SUGGESTIONS AGAIN WHEN INPUT IS FOCUSED
-// =========================================================
 
 searchInput.addEventListener("focus", function () {
-
     if (this.value.trim().length > 0) {
-
-        searchInput.dispatchEvent(
-            new Event("input")
-        );
-
+        searchInput.dispatchEvent(new Event("input"));
     }
-
 });
 
 
-// =========================================================
-// PREVENT HTML INJECTION
-// =========================================================
-
 function escapeHtml(value) {
-
     const div = document.createElement("div");
-
     div.textContent = value;
-
     return div.innerHTML;
-
 }
 
 </script>
